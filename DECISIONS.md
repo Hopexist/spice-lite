@@ -307,3 +307,34 @@ unchanged (goldens). A capacitor directly across a voltage source with uic is st
 
 ## D44: Report naming (refactor run)
 The web UI report moves to `REPORT_WEB.md`; `REPORT.md` stays the latest run, as with `REPORT_M5_M7.md` and `REPORT_M8_M9.md`.
+
+
+# UI polish run
+
+## D45: Tools evaluated (Phase 1)
+Every tool was cloned into the session scratchpad as read-only data (nothing executed). The README and every SKILL.md / rules file of the
+part actually followed was read in full before use; the rest of each repository was safety-scanned (network fetches, global installs,
+hooks, writes outside the repo, credentials). Installed skills go to this repository's `.claude/skills/` only, never `~/.claude`.
+
+| Tool | Verdict | Why |
+|---|---|---|
+| StageShow (benjitaylor/skills, MIT) | partly used | It is a skill whose kit is React + lucide-react; the brief forbids adding a framework. Its principles are followed by hand in the landing demo: 3-5 beats and a payoff, values that move instead of swapping, a poster frame that tells the story alone (shown under reduced motion), a loop that resets with a visible cause, real words only on the focal parts. Kit not installed. |
+| Impeccable (pbakaus, Apache-2.0) | partly used | Setup runs a launcher that downloads a self-contained binary on first run (a network-fetched executable), and an optional hook auto-runs a detector: not allowed. Used through its own documented "launcher unavailable" path: `craft-floor.md` (quality floor and refuse list), `mode-operate.md` (the app: the world lends type, palette, density and one signature move, never a costume of an instrument), `mode-persuade.md` (the landing section) and `animate.md`. Not installed. |
+| Dimensional Drawing (enesozturk, MIT) | used, installed | Pure instructions plus two example HTML sheets; no scripts in the drawing skill. Drives the element spec sheets (monochrome line, title block, coded values, numbered notes, `[TBD]` instead of invented values). The motion sub-skill (Playwright + ffmpeg film) is not needed and not installed. |
+| Oil UI (oil-oil, license not stated in the repo root) | partly used | Runs an update check (`check_update.sh`, network) and an upsell script, and its image generation spends paid credits: none of that is used. Its explicit-exploration method is followed by hand: three directions that share at most one of layout, typography, colour and key imagery; first screen only; compared side by side at 480 px and chosen with written reasons when unattended. Not installed. |
+| Emil Kowalski skills (MIT) | used, installed | `animate` and `review-animations` (with RECIPES.md and STANDARDS.md): pure instructions. They set the motion rules (frequency gate, named purpose, transform/opacity, strong ease-out curves, UI under 300 ms, reduced motion and hover gating shipped with every animation) and the Phase 6 motion review. The other 16 skills (Swift, Expo, mobile, gestures, Sonner, ...) do not apply to this stack and were not read. |
+| Taste Skill (Leonxlnx/taste-skill 2.5.1; the brief's "LeonxInx" spelling does not exist) | partly used | Its frontmatter registers a Claude Code Stop hook that runs `gate.mjs`, and its pipeline downloads photographs and icons: not installed. It targets company marketing sites; the "dials" the brief mentions are in older versions. Rules taken: no fade-in on every section or scroll-jacking, no violet, one button / card system, 44 px tap targets, nothing hidden under reduced motion, no invented figures, every control answers the pointer. Found on the second attempt (`gh search repos`). |
+| Brand Identity (fatihaydost, MIT) | partly used | The Python pipeline installs its own packages via uv and fetches Google Fonts, a full run costs ~0.9 M tokens (its README), and it stops for the user to pick. Its method is followed by hand: one mechanism that yields mark, type and palette; the reflex test against `ai-defaults.md` (no Inter, Fraunces, Space Grotesk/Sora, cream-terracotta, violet-in-tech); a mark drawn on a 100-unit grid from filled primitives and judged flat at 16 and 32 px; contrast measured, not asserted. Not installed. |
+| Awwwards MCP (INSANE0777/Awwwards) | skipped | Not configured in this session (the brief: use only if already configured), and the repository name does not resolve. Replaced by reading Linear, Falstad's circuit simulator and Wokwi (first-viewport layout, type and motion), via a fetch agent. |
+| Kokonut UI (MIT) | studied | React + Tailwind + Motion; not added. Pattern taken and rebuilt natively: a bento of capability tiles where each tile holds a small live diagram rather than an icon. |
+| Bklit UI (bklit/bklit-ui, MIT) | studied | React charts library; ui.bklit.com redirects to bklit.com (not the catalog); found on GitHub. Pattern taken: charts that draw their line in once on mount and a value that rolls to its new number. |
+| Manus.im | studied | Public site only, for composition: one centred line, an action directly under it, the product shown right below. No branding, copy, images or code taken. |
+
+## D46: Animation engine: none (CSS + Web Animations API), 0 kB
+- **Measured** (esbuild, minified, gzip -9, a bare `animate()` import): Motion `animate` 28.4 kB; Motion `motion/mini` 3.7 kB;
+  anime.js 4.5 `animate` 13.3 kB.
+- **Choice:** no library. Every planned motion (staged loading bar, tab change, plot reveal, number tickers, change highlight, error
+  entrance, button press, theme change, toast) is a CSS transition or keyframe, or one `element.animate()` call; the tickers are a short
+  `requestAnimationFrame` loop. Emil's rule "cheapest tool that works; don't install a motion library for a fade".
+- **Alternatives:** `motion/mini` (3.7 kB) if springs or interruptible sequencing are ever needed; anime.js costs more for features
+  (timelines, SVG morphing) this UI does not use.
