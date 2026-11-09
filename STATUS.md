@@ -78,3 +78,22 @@ Started Mon Nov 9 15:26:52 EST 2026 (per `date`); time box ~2 h (final report by
 | stiff_adaptive .tran | 0.0104 s |
 | rlc_ring_adaptive .tran | 0.1081 s |
 | nmos_common_source .ac | 0.0019 s |
+
+# UI polish run (branch `ui-polish`)
+
+Started Mon Nov 9 16:27:12 EST 2026 (per `date`); time box ~3 h (final report by 19:07 at the latest). Baseline: `pytest -q` 809 passed,
+0 skipped (ngspice via `NGSPICE`); `npm test` 103 passed.
+
+| Phase | State | Notes |
+|---|---|---|
+| 0. Baseline | done | docs/ui-before/: 7 states x 360/1440 x dark/light = 28 shots (web/scripts/shots.mjs, Edge, reduced motion); no console errors |
+| 1. Tools and skills | not started | |
+| 2. Design direction | not started | |
+| 3. Design system | not started | |
+| 4. Motion | not started | |
+| 5. Landing and spec sheets | not started | |
+| 6. Audit | not started | |
+
+Baseline size and load: JS 375.7 kB (129.4 kB gzip), CSS 13.9 kB (4.1 kB gzip), index.html 1.4 kB gzip; dist/ 1.71 MB in total
+(includes 0.9 MB of reference JSON fetched only on demand, the 54 kB wheel and the font files). First results 10.3 s on a cold browser
+cache (Pyodide + numpy + scipy from the CDN), measured by shots.mjs.
