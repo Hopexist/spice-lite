@@ -153,3 +153,57 @@ test("keyboard: every control is reachable and tabs move with the arrow keys", a
   for (const label of ["Run", "Copy link"]) await expect(page.getByRole("button", { name: new RegExp(label) })).toBeVisible();
   await expect(page.getByLabel("Example")).toBeVisible();
 });
+// ---- motion (DECISIONS D50): it explains a state change once, and never repeats for redraws ----
+
+test("a new result reveals its plots once; switching tabs back does not replay it", async ({ page }) => {
+  await page.goto("/#ex=inv_amp");
+  await expect(page.locator(".tab")).toHaveCount(3);
+  await page.locator(".tab", { hasText: ".ac" }).click();
+  await expect(page.locator(".reveal-mask").first()).toBeAttached(); // the traces draw in
+  await expect(page.locator(".reveal-mask")).toHaveCount(0, { timeout: 5000 }); // and the mask removes itself
+  await page.locator(".tab", { hasText: ".op" }).click();
+  await page.locator(".tab", { hasText: ".ac" }).click();
+  await expect(page.locator(".uplot canvas").first()).toBeVisible();
+  expect(await page.locator(".reveal-mask").count()).toBe(0);
+});
+
+test("under reduced motion nothing moves and every result is still there", async ({ browser }) => {
+  const context = await browser.newContext({ reducedMotion: "reduce" });
+  const page = await context.newPage();
+  await page.goto("/#ex=rc_lowpass");
+  await expect(page.locator(".uplot canvas").first()).toBeVisible();
+  expect(await page.locator(".reveal-mask").count()).toBe(0);
+  await context.close();
+});
+
+test("a re-run that changes an operating point rolls the value and marks the changed cell", async ({ page }) => {
+  await page.goto(share("T\nV1 a 0 DC 4\nR1 a b 1k\nR2 b 0 1k\n.op\n"));
+  await expect(page.locator("table.data")).toContainText("2 V");
+  await page.locator(".cm-content").click();
+  await page.keyboard.press("Control+Home");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("End");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.type("6");
+  await page.locator("#run").click();
+  await expect(page.locator("td.changed").first()).toBeAttached();
+  const row = page.locator("tr", { hasText: "v(b)" });
+  await expect(row.locator("td").nth(2)).toHaveText("3 V"); // the ticker ends on the exact formatted value
+  await expect(page.locator("tr", { hasText: "v(a)" }).locator("td").nth(2)).toHaveText("6 V");
+});
+
+test("Ctrl+Enter in the editor runs the netlist exactly once", async ({ page }) => {
+  await page.goto("/#ex=divider");
+  await expect(page.locator("table.data")).toBeVisible();
+  await page.evaluate(() => {
+    const w = window as unknown as { renders: number };
+    w.renders = 0;
+    new MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach((n) => (n as HTMLElement).classList?.contains("tabs") && w.renders++)))
+      .observe(document.getElementById("results")!, { childList: true });
+  });
+  await page.locator(".cm-content").click();
+  await page.keyboard.press("Control+Enter");
+  await expect.poll(() => page.evaluate(() => (window as unknown as { renders: number }).renders)).toBe(1);
+  await page.waitForTimeout(1500); // a second, coalesced run would land here
+  expect(await page.evaluate(() => (window as unknown as { renders: number }).renders)).toBe(1);
+});

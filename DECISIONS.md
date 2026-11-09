@@ -394,3 +394,35 @@ gradient orb. Palette and measured contrast in `docs/brand/brand-sheet.png`: Ink
 - **Fonts:** `@fontsource/archivo` (400/600/700) and `@fontsource/jetbrains-mono` (400/600) replace IBM Plex Sans/Mono: self-hosted
   latin subsets with `font-display: swap`, no third-party font request at runtime. Font files are data, not code; recorded per the
   dependency rule.
+
+
+## D50: Motion (Phase 4)
+Rules: Emil Kowalski's `animate` / `review-animations` (installed, D45), Impeccable's `animate.md`, Taste's never-list. No library (D46).
+Thesis: one authored moment (the plot reveal); everything else is feedback or state, short and quiet; nothing moves for redraws.
+
+| Motion | Purpose | Ingredients | Frequency gate |
+|---|---|---|---|
+| First-load bar | state: which of the three worker steps is running | determinate fill, `transform: scaleX` to (k - 0.5)/3, 300 ms ease-out, "Step k of 3" text, `role=progressbar` | once per visit |
+| Plot reveal | the authored moment: a NEW result draws in | a surface-coloured mask over uPlot's plot area slides off (`scaleX` 1 -> 0, origin right), 600 ms ease-in-out; axes readable from frame 0; once per result and panel, never on tab switch, Plot/Table toggle, theme change, overlay, zoom or hover | once per run |
+| .op ticker | state: a re-run changed this value | rAF roll from the old value to the new, 300 ms ease-out, ends on the exact formatted text | only changed values, only after a re-run |
+| Change wash | state: which cells changed | `accent-soft` background fading to transparent, 1.4 s, colour only | same |
+| Error panel / warnings | feedback: something needs reading | opacity + 4 px rise, 240 ms ease-out | per failed run |
+| Gutter marker | points at the line | scale 0.6 -> 1 with a fading ring, 300 ms | per failed run |
+| Tab change | continuity | underline `scaleX` 180 ms; panel opacity only, 120 ms (tabs are used tens of times a day) | frequent: near-imperceptible |
+| Button press | feedback | `scale(0.97)` 120 ms ease-out; hover colour gated behind `(hover: hover) and (pointer: fine)` | frequent: subtle |
+| Theme toggle | explains a page-wide palette change | View Transitions cross-fade 240 ms; instant where unsupported | rare |
+| Copy link | confirmation on the control itself | label "Link copied" + signal border for 1.6 s, plus the existing toast (opacity + 8 px, 180 ms) | occasional |
+
+- **Not animated** (by the frequency gate): Run itself (press feedback only), Ctrl/Cmd+Enter, the examples `<select>` (a native control: its menu is the platform's, so no custom open/close motion), legend toggles, zoom.
+- **Properties:** transform and opacity everywhere except the change wash (background colour, by design) and the view-transition cross-fade. No `transition: all` (the old toast had one; removed).
+- **Reduced motion:** no reveal mask, no scale or movement (button press, gutter pulse, tab underline, toast), the error panel only fades,
+  the ticker jumps to the final value; the wash and the determinate bar stay (they carry meaning without movement). Tested in e2e.
+- **Main thread:** the reveal and the bar are CSS; the ticker is a 300 ms rAF loop after results arrive; nothing animates while the
+  worker is computing except the CSS bar during first load.
+- **Review** (`review-animations`, self-run, Approve after two fixes): the gutter pulse was 420 ms (over the 300 ms UI budget) -> 300 ms;
+  the reveal mask let a trace lying on the plot border show ahead of the sweep -> the mask now overhangs by 2 px. The 600 ms reveal is
+  kept deliberately: it is the one authored moment (Impeccable: 500-800 ms for a focal entrance), it runs once per result.
+- **Also fixed here** (found in the earlier code review): Ctrl/Cmd+Enter in the editor ran the netlist twice (the editor and the page
+  both handled it). The page listener now ignores keys the editor already handled; an e2e test counts renders.
+- **Tests:** `web/tests/motion.test.ts` (stages match the worker's messages, easing endpoints) and four e2e tests (reveal once,
+  reduced motion, changed-value roll and mark, single run on Ctrl+Enter).

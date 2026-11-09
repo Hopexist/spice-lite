@@ -165,10 +165,41 @@ select:hover { border-color: var(--ink); }
 .boot { margin: var(--s4) 0; padding: var(--s4) 0; border-top: var(--rule) solid var(--grid); color: var(--muted); }
 .boot strong { display: block; color: var(--ink); font-weight: 700; margin-bottom: var(--s1); }
 .boot .note { font-size: var(--fs-sm); }
-.bar-indet { height: 3px; margin: var(--s3) 0 var(--s1); background: var(--grid); overflow: hidden; }
-.bar-indet::after { content: ""; display: block; height: 100%; width: 35%; background: var(--accent); animation: sweep 1.2s var(--ease-in-out) infinite; }
-@keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
-@media (prefers-reduced-motion: reduce) { .bar-indet::after { animation: none; width: 100%; opacity: 0.5; } }
+.boot .stage { display: block; }
+/* determinate: the worker reports three named steps, and the fill moves to the current one */
+.bar-det { height: 3px; margin: var(--s3) 0 var(--s1); background: var(--grid); overflow: hidden; }
+.bar-det .fill { display: block; height: 100%; background: var(--accent); transform: scaleX(0); transform-origin: left; transition: transform var(--dur-4) var(--ease-out); }
+
+/* ---- motion: each one explains a state change (DECISIONS D50) ---- */
+/* the authored moment: a new result's traces draw in once, left to right */
+.reveal-mask { position: absolute; inset: -2px; background: var(--surface); /* -2px: a trace on the plot border is stroked half outside it */ transform-origin: right; pointer-events: none; animation: unveil var(--dur-reveal) var(--ease-in-out) forwards; }
+@keyframes unveil { to { transform: scaleX(0); } }
+/* a value a re-run changed: a signal-tinted wash that fades out */
+td.changed { animation: wash 1.4s var(--ease-out); }
+@keyframes wash { from { background-color: var(--accent-soft); } to { background-color: transparent; } }
+/* errors and warnings arrive calmly; the gutter marker pulses once to point at the line */
+.msg { animation: arrive var(--dur-3) var(--ease-out); }
+@keyframes arrive { from { opacity: 0; transform: translateY(-4px); } }
+.err-mark { animation: pulse var(--dur-4) var(--ease-out); }
+@keyframes pulse { from { transform: scale(0.6); box-shadow: 0 0 0 0 var(--err); } 60% { box-shadow: 0 0 0 5px transparent; } to { transform: scale(1); } }
+/* tabs are used often: their panels only fade, briefly */
+.panel:not([hidden]) { animation: fade var(--dur-1) var(--ease-out); }
+@keyframes fade { from { opacity: 0; } }
+/* theme change: a short cross-fade of the whole page (View Transitions) */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--dur-3); animation-timing-function: var(--ease-out); }
+/* copy-link confirmation on the button itself */
+#share.done { border-color: var(--accent); color: var(--accent); }
+
+@media (prefers-reduced-motion: reduce) {
+  /* fewer and gentler: no movement or scaling; colour and opacity changes that carry meaning stay */
+  .reveal-mask { display: none; }
+  .msg { animation-name: fade; }
+  .err-mark { animation: none; }
+  .btn:active { transform: none; }
+  .tab::after, .bar-det .fill { transition: none; }
+  .toast { transform: translate(-50%, 0); }
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+}
 
 /* ---- tabs and panels ---- */
 .tabs { display: flex; gap: var(--s5); margin: var(--s3) 0 0; overflow-x: auto; border-bottom: var(--rule) solid var(--ink); }

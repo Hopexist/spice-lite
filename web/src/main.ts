@@ -13,6 +13,7 @@ import { DEFAULT_EXAMPLE, EXAMPLES, findExample } from "./examples";
 import { columns, csvFileName, defaultVisible, eng, groupSignals, num, opRows, toCsv } from "./format";
 import { decodeShare, encodeShare } from "./hash";
 import { drawGroup, type Extra, type PlotHandle } from "./plots";
+import { BOOT_STAGES, flash, reducedMotion, revealPlot, stageOf, tick } from "./motion";
 import { loadReference, overlayFor, type Overlay } from "./reference";
 import type { Analysis, RunOk, RunResult, Warn } from "./types";
 
@@ -36,6 +37,12 @@ let showReference = false;
 let overlay: Map<number, Overlay> = new Map();
 const views = new Map<number, "plot" | "table">();
 let handles: PlotHandle[] = [];
+// Motion runs once per NEW result: a panel shown for the first time after a run reveals its plots (and rolls changed .op
+// values); redraws for a tab switch, the Plot/Table toggle, the theme or the reference overlay do not animate.
+let resultId = 0;
+const shown = new Set<string>();
+let opNow = new Map<string, number>(); // .op values of the result on screen
+let opBefore = new Map<string, number>(); // ... and of the result before it, for the change highlight
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
 
 // ---------------------------------------------------------------- small helpers
@@ -54,12 +61,23 @@ function setBoot(message: string | null) {
   const boot = $("boot");
   if (message === null) return void (boot.hidden = true);
   boot.hidden = false;
-  boot.replaceChildren(
-    el("strong", {}, "Starting the Python runtime"),
-    el("span", {}, message),
-    el("div", { class: "bar-indet", "aria-hidden": "true" }),
-    el("span", { class: "note" }, "The first visit downloads about 30 MB (Python, numpy, scipy); your browser caches it, so later visits start in seconds."),
-  );
+  const stage = stageOf(message);
+  if (!boot.querySelector(".bar-det")) {
+    boot.replaceChildren(
+      el("strong", {}, "Starting the Python runtime"),
+      el("span", { class: "stage" }),
+      el("div", { class: "bar-det", role: "progressbar", "aria-label": "Starting the Python runtime", "aria-valuemin": "0", "aria-valuemax": String(BOOT_STAGES.length) }, el("span", { class: "fill" })),
+      el("span", { class: "note" }, "The first visit downloads about 25 MB (Python, numpy, scipy); your browser caches it, so later visits start in seconds."),
+    );
+  }
+  // a known stage fills the bar to that step; an unknown message keeps the bar where it is
+  boot.querySelector(".stage")!.textContent = stage ? `Step ${stage} of ${BOOT_STAGES.length}: ${message}` : message;
+  const bar = boot.querySelector<HTMLElement>(".bar-det")!;
+  if (stage) {
+    bar.setAttribute("aria-valuenow", String(stage - 1));
+    // halfway into the current step: the step has started, not finished (transform only, set on the fill itself)
+    bar.querySelector<HTMLElement>(".fill")!.style.transform = `scaleX(${(stage - 0.5) / BOOT_STAGES.length})`;
+  }
 }
 
 // ---------------------------------------------------------------- theme
@@ -132,6 +150,11 @@ function render(res: RunResult) {
     return;
   }
   result = res;
+  resultId++;
+  shown.clear();
+  opBefore = opNow;
+  const opResult = res.analyses.find((a) => a.type === "op");
+  opNow = new Map((opResult?.signals ?? []).filter((s) => s.values[0] != null).map((s) => [s.name, s.values[0] as number]));
   activeTab = Math.min(activeTab, res.analyses.length - 1);
   const total = res.analyses.reduce((s, a) => s + a.meta.runtime_ms, 0);
   setStatus(`${res.title || "Untitled"} \u00b7 ${res.analyses.length} analysis${res.analyses.length > 1 ? "es" : ""} in ${total < 10 ? total.toFixed(1) : Math.round(total)} ms`);
@@ -209,11 +232,13 @@ function drawPanel(i: number) {
   const a = result.analyses[i];
   const body = $(`body-${i}`);
   if (!body) return;
+  const fresh = !shown.has(`${resultId}:${i}`); // first time this panel shows this result
+  shown.add(`${resultId}:${i}`);
   handles = handles.filter((h) => (h.destroy(), false));
   body.replaceChildren();
   const ref = showReference ? overlay.get(i) : undefined;
   if (a.type === "op" || views.get(i) === "table") {
-    body.append(buildTable(a, ref));
+    body.append(buildTable(a, ref, fresh));
     if (ref && a.type === "op") body.prepend(refPanel(ref));
     return;
   }
@@ -230,7 +255,11 @@ function drawPanel(i: number) {
     anyCurrent ||= g.current;
     const extra: Extra[] = ref ? ref.extras.get(g.id) ?? [] : [];
     // a group that is only present once the box is open still needs a measurable width: draw after attaching
-    queueMicrotask(() => handles.push(drawGroup(host, a.x!, g, defaultVisible(g.signals.length), { syncKey, height: g.phase ? 200 : 280, extra })));
+    queueMicrotask(() => {
+      handles.push(drawGroup(host, a.x!, g, defaultVisible(g.signals.length), { syncKey, height: g.phase ? 200 : 280, extra }));
+      // a closed <details> never runs the animation, so the branch-current plots appear without one
+      if (fresh && !g.current) revealPlot(host);
+    });
   }
   if (anyCurrent) {
     body.append(currentBox);
@@ -251,7 +280,7 @@ function redrawPlots() {
 }
 
 const MAX_ROWS = 600;
-function buildTable(a: Analysis, ref?: Overlay): HTMLElement {
+function buildTable(a: Analysis, ref?: Overlay, fresh = false): HTMLElement {
   const wrap = el("div", { class: "tablewrap", tabindex: "0", role: "region", "aria-label": `${tabLabel(a)} results table` });
   const table = el("table", { class: a.type === "op" ? "data op" : "data" });
   if (a.type === "op") {
@@ -259,8 +288,18 @@ function buildTable(a: Analysis, ref?: Overlay): HTMLElement {
     table.append(el("thead", {}, el("tr", {}, ...head.map((h) => el("th", {}, h)))));
     const tbody = el("tbody");
     for (const r of opRows(a)) {
-      const row = el("tr", {}, el("td", {}, r.name), el("td", {}, r.kind), el("td", { class: "num", title: String(r.raw) }, r.value));
+      const cell = el("td", { class: "num", title: String(r.raw) }, r.value);
+      const row = el("tr", {}, el("td", {}, r.name), el("td", {}, r.kind), cell);
       const unit = a.signals.find((s) => s.name === r.name)?.unit ?? "";
+      const before = opBefore.get(r.name);
+      if (fresh && r.raw !== null && before !== undefined && before !== r.raw) {
+        // a re-run changed this value: roll it from the old number and mark it once
+        const raw = r.raw;
+        queueMicrotask(() => {
+          tick(cell, before, raw, (v) => eng(v, unit));
+          flash(cell);
+        });
+      }
       const theirs = ref?.op.get(r.name);
       if (ref) row.append(el("td", { class: "num" }, theirs === undefined ? "\u2014" : eng(theirs, unit)), el("td", { class: "num" }, theirs === undefined || r.raw === null ? "\u2014" : eng(r.raw - theirs, unit, 3)));
       tbody.append(row);
@@ -379,6 +418,14 @@ async function copyLink() {
   try {
     await navigator.clipboard.writeText(location.href);
     toast("Link copied to the clipboard");
+    // the button confirms on itself too, then returns to its label
+    const btn = $("share");
+    btn.classList.add("done");
+    btn.textContent = "Link copied";
+    setTimeout(() => {
+      btn.classList.remove("done");
+      btn.textContent = "Copy link";
+    }, 1600);
   } catch {
     window.prompt("Copy this link", location.href);
   }
@@ -400,9 +447,16 @@ async function main() {
   editor = createEditor($("editor"), "", { onChange: onEdit, onRun: () => void run() });
   $("run").addEventListener("click", () => void run());
   $("share").addEventListener("click", () => void copyLink());
-  $("theme").addEventListener("click", () => applyTheme(({ system: "light", light: "dark", dark: "system" } as const)[currentTheme()]));
+  $("theme").addEventListener("click", () => {
+    const next = ({ system: "light", light: "dark", dark: "system" } as const)[currentTheme()];
+    // a short cross-fade explains that the whole page changed palette (View Transitions; instant where unsupported or reduced)
+    const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
+    if (doc.startViewTransition && !reducedMotion()) doc.startViewTransition(() => applyTheme(next));
+    else applyTheme(next);
+  });
   document.addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+    // the editor handles Ctrl/Cmd+Enter itself (and prevents the default): do not run a second time
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !e.defaultPrevented) {
       e.preventDefault();
       void run();
     }
