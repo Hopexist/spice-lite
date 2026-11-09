@@ -194,6 +194,7 @@ def _parse_controlled(kind: str, tokens: list[str], num: int):
 
 def parse(text: str) -> Circuit:
     # The title is always line 1, even if it looks like a comment or element.
+    """Parse netlist text into a Circuit; raises NetlistError (with a line number) on anything unsupported."""
     lines = text.splitlines()
     circuit = Circuit(title=lines[0].strip() if lines else "")
     body = "\n".join(["", *lines[1:]])  # blank first line keeps numbering aligned
@@ -310,5 +311,6 @@ def parse(text: str) -> Circuit:
 
 
 def parse_file(path: str) -> Circuit:
+    """Read a UTF-8 netlist file and parse it."""
     with open(path, encoding="utf-8") as f:
         return parse(f.read())

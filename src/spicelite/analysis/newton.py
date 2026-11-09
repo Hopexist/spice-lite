@@ -33,6 +33,7 @@ GMIN_STAGES = [10.0**-k for k in range(2, 13)] + [0.0]  # 1e-2 ... 1e-12, then n
 
 @dataclass
 class NewtonResult:
+    """Converged Newton solution x with its node index, iteration count and strategy."""
     x: np.ndarray  # full unknown vector for the EXPANDED circuit (see _expand)
     idx: dict[str, int]  # node name -> index in x, including hidden RS nodes "<diode>#int"
     iterations: int  # total Newton iterations, including any failed first attempt

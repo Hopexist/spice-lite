@@ -116,7 +116,7 @@ Unsupported features must raise a clear `NetlistError` with the line number. Nev
 pip install -e .[dev]        # install in editable mode with dev deps
 pytest -q                    # run tests
 spicelite run examples/rc_lowpass.cir      # run a netlist from the CLI
-python -m spicelite.ngspice examples/rc_lowpass.cir   # run the ngspice comparison
+pytest -q -k rc_lowpass tests/test_vs_ngspice.py   # run one ngspice comparison (needs ngspice, or set NGSPICE)
 ```
 
 ## README requirements (for GitHub)

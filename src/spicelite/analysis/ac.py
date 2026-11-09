@@ -20,6 +20,7 @@ from .newton import _expand, solve_nonlinear
 
 @dataclass
 class AcResult:
+    """Complex phasors per node/branch over the frequency grid."""
     freqs: np.ndarray  # Hz
     voltages: dict[str, np.ndarray]  # node name -> complex phasor at each frequency
     currents: dict[str, np.ndarray]  # V-source / inductor name -> complex branch current
@@ -50,6 +51,7 @@ def _diode_solver(circuit: Circuit):
 
 
 def ac(circuit: Circuit, sweep: AcSweep | None = None, solver: str = "auto") -> AcResult:
+    """AC small-signal sweep: one complex MNA solve per frequency (diodes linearised at their DC bias)."""
     check_solver(circuit, solver)
     sweep = sweep or circuit.ac
     if sweep is None:
@@ -71,6 +73,7 @@ def ac(circuit: Circuit, sweep: AcSweep | None = None, solver: str = "auto") -> 
 
 
 def magnitude_db(z: np.ndarray) -> np.ndarray:
+    """20 log10 |z|."""
     return 20 * np.log10(np.abs(z))
 
 

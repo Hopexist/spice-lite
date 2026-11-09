@@ -40,6 +40,7 @@ class CliError(Exception):
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """The argparse parser for `spicelite`."""
     p = argparse.ArgumentParser(prog="spicelite", description="A small SPICE-style circuit simulator.")
     p.add_argument("--version", action="version", version=f"spicelite {__version__}")
     sub = p.add_subparsers(dest="command", required=True, metavar="command")
@@ -155,6 +156,7 @@ def _run(args: argparse.Namespace) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Entry point; returns the process exit status (see the module docstring)."""
     args = build_parser().parse_args(argv)  # exits with status 2 on a usage error
     try:
         with warnings.catch_warnings():

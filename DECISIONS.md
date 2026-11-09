@@ -80,3 +80,14 @@ Each entry: choice, alternatives, why.
   the test step fails if the log contains "skipped", the same 0-skips rule as the local runs.
 - **Risk (unverified):** apt's ngspice is not 41 (the version the tolerances were measured against), so a
   comparison could fail on GitHub even though it passes here. I cannot run the workflow without pushing.
+
+## D13. "Empty netlist" is detected when solving, not when parsing
+- **Choice:** `mna.check_topology` raises `SingularCircuitError("the circuit has no elements")`; `parse()` still
+  accepts an element-less netlist.
+- **Alternative:** `NetlistError` from `parse()` (with line number).
+- **Why:** 9 existing tests parse element-less netlists to check directives or the title line, and I may not
+  edit or weaken existing tests. Every analysis and the CLI go through `check_topology`, so nothing slips by.
+
+## D14. CLAUDE.md command `python -m spicelite.ngspice ...` replaced by a pytest command
+- **Why:** `ngspice.py` has no `__main__`, so the documented command never worked. A `--compare` CLI mode is the
+  obvious feature if you want it (see REPORT.md).

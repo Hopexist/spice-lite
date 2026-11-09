@@ -13,6 +13,7 @@ from .newton import solve_nonlinear
 
 @dataclass
 class OpResult:
+    """Operating-point node voltages and branch currents."""
     voltages: dict[str, float]  # node name -> volts (ground "0" omitted)
     currents: dict[str, float]  # V-source / inductor name -> amps, SPICE sign: into n+, through the element
     iterations: int = 0  # Newton iterations (0 for a linear circuit: one direct solve)
@@ -21,6 +22,7 @@ class OpResult:
 
 @dataclass
 class DcSweepResult:
+    """Node voltages and branch currents at each swept source value."""
     sweep: np.ndarray  # swept source values
     voltages: dict[str, np.ndarray]  # node name -> volts at each sweep point
     currents: dict[str, np.ndarray]  # V-source / inductor name -> amps at each sweep point

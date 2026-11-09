@@ -97,6 +97,8 @@ def check_topology(circuit: Circuit, dc: bool = True) -> None:
     Loop of voltage sources: over-constrains the voltages (dependent constraint rows).
     At DC an inductor is a 0 V source, so it counts; at AC it has impedance, so it doesn't.
     """
+    if not circuit.elements:
+        raise SingularCircuitError("the circuit has no elements: nothing to solve")
     nodes = {GROUND} | {n for e in circuit.elements for n in element_nodes(e)}
     vparent = {n: n for n in nodes}
     for e in circuit.branch_elements():

@@ -78,6 +78,7 @@ class ResolutionWarning(UserWarning):
 
 @dataclass
 class TranResult:
+    """Time grid with node voltages, branch currents, Newton iterations per step and step halvings."""
     time: np.ndarray  # seconds
     voltages: dict[str, np.ndarray]  # node name -> volts at each time point
     currents: dict[str, np.ndarray]  # V-source / inductor name -> amps (SPICE sign)

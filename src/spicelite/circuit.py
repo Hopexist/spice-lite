@@ -32,6 +32,7 @@ class OpenLoopWarning(UserWarning):
 
 @dataclass
 class Resistor:
+    """Resistor between n1 and n2; value in ohms."""
     name: str
     n1: str
     n2: str
@@ -40,6 +41,7 @@ class Resistor:
 
 @dataclass
 class Capacitor:
+    """Capacitor between n1 and n2; value in farads (open at DC)."""
     name: str
     n1: str
     n2: str
@@ -48,6 +50,7 @@ class Capacitor:
 
 @dataclass
 class Inductor:
+    """Inductor between n1 and n2; value in henries (a 0 V source at DC, adds a branch current)."""
     name: str
     n1: str
     n2: str
@@ -112,6 +115,7 @@ class Sin:
 
 @dataclass
 class VoltageSource:
+    """Independent voltage source n1(+) to n2(-): DC value, AC phasor and optional transient waveform."""
     name: str
     n_plus: str
     n_minus: str
@@ -298,6 +302,7 @@ class ConvergenceError(Exception):
 
 @dataclass
 class Circuit:
+    """A parsed netlist: elements plus the analysis directives that were present."""
     title: str = ""
     elements: list[Element] = field(default_factory=list)
     op: bool = False  # a `.op` directive was present
