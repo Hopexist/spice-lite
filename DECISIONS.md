@@ -448,3 +448,17 @@ Thesis: one authored moment (the plot reveal); everything else is feedback or st
   note, an example). `tests/test_element_sheets.py` fails if a parser letter has no sheet, a symbol is missing, an example does not parse,
   or a documented diode / MOSFET default differs from the dataclass.
 - **Fixed while testing:** the `hidden` attribute lost to classes that set `display` (`.btn`); a base rule now makes it win.
+
+
+## D52: Audit (Phase 6) and report naming
+- All 35 examples ran through the built site (`web/scripts/audit.mjs`): no errors, no console errors, no failed requests. The simulation
+  code is untouched in this run (web_api, worker, engine); the Pyodide test still compares every example with the committed ngspice data.
+- Contrast: the token test (37 checks) plus a scan of every rendered text element in both themes: all at least WCAG AA.
+- Keyboard: tab order skip link > header controls > Try it > Supported elements > Pause demo > editor > tabs; a visible ring on every
+  control (the editor shows its ring on its container).
+- Reduced motion, 360 / 1440 px, light / dark, sub-path `/spice-lite/`: covered by e2e (24 tests) and the after-screenshots.
+- Size against the Phase 0 baseline: JS +4.6 kB gzip, CSS +2.1 kB, HTML +1.4 kB, fonts -30.1 kB (Archivo + JetBrains Mono replace
+  six IBM Plex files): about 22 kB less on first load; well inside the +150 kB budget, so no justification or cut was needed.
+- An e2e run straight after the screenshot scripts had 3 failures (one was the reference-overlay test); the next full run passed 24/24
+  and the three tests then passed 9 of 9 repeats. Not reproduced, cause not confirmed: recorded as intermittent, not fixed.
+- The refactor report moves to `REPORT_REFACTOR.md`; `REPORT.md` is the UI polish report (same convention as D38 and D44).

@@ -60,7 +60,7 @@ export async function renderDemo(host: HTMLElement, pauseButton: HTMLButtonEleme
               <line x1="${tauX}" y1="${tauY}" x2="${tauX}" y2="${H - PAD_B}" class="d-lead"/>
               <line x1="${PAD_L}" y1="${tauY}" x2="${tauX}" y2="${tauY}" class="d-lead"/>
               <circle cx="${tauX}" cy="${tauY}" r="3.5" class="d-dot"/>
-              <text x="${tauX + 10}" y="${tauY + 34}" class="d-label">63.2 % at t = RC = 1 ms</text>
+              <text x="${tauX + 10}" y="${tauY + 34}" class="d-label">63.2 % at t = RC</text>
             </g>
           </svg>
           <p class="d-legend"><span class="k k-in"></span>v(in) <span class="k k-out"></span>v(out) <span class="d-src">ngspice 41 data; spicelite agrees to 1.1e-5 of peak</span></p>

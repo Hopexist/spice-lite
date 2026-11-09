@@ -5,7 +5,8 @@ const out = process.argv[3] ?? ".";
 const browser = await chromium.launch({ channel: "msedge" });
 const errors = [];
 async function shoot(name, viewport, scheme, hash = "") {
-  const ctx = await browser.newContext({ viewport, colorScheme: scheme, deviceScaleFactor: 1 });
+  // reduced motion: the landing demo shows its poster frame (the finished, annotated result) instead of a mid-draw frame
+  const ctx = await browser.newContext({ viewport, colorScheme: scheme, deviceScaleFactor: 1, reducedMotion: "reduce" });
   const page = await ctx.newPage();
   page.on("console", (m) => m.type() === "error" && errors.push(`${name}: console: ${m.text()}`));
   page.on("pageerror", (e) => errors.push(`${name}: pageerror: ${e.message}`));

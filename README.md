@@ -14,7 +14,7 @@ roadmap in `CLAUDE.md`).
 
 **Live demo: https://hopexist.github.io/spice-lite/** (placeholder until GitHub Pages is enabled for this repository)
 
-Paste or edit a netlist, press Run (Ctrl/Cmd+Enter), and get interactive plots and tables. spicelite runs in your browser through
+Paste or edit a netlist, press Run (Ctrl/Cmd+Enter), and get interactive plots and tables. The page opens with a live demo drawn from real simulation data, and ends with a spec sheet for every element the parser accepts. spicelite runs in your browser through
 [Pyodide](https://pyodide.org) inside a Web Worker, so there is no server and nothing you type leaves the page. Every bundled
 example can overlay precomputed ngspice curves with an error panel; share links (`#n=...`) reproduce a circuit.
 
