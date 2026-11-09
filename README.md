@@ -1,19 +1,41 @@
 # spice-lite
 
+[![CI](https://github.com/Hopexist/spice-lite/actions/workflows/ci.yml/badge.svg)](https://github.com/Hopexist/spice-lite/actions/workflows/ci.yml)
+
 A small SPICE-style circuit simulator in Python. It parses a subset of the SPICE netlist
 format and solves DC operating point, DC sweep, AC small-signal and transient analyses with
 Modified Nodal Analysis (MNA), using Newton-Raphson for diodes. Results are checked against ngspice.
 
-**Status:** Milestones 1-6 done (parser, DC, AC, transient, diodes with Newton-Raphson in DC, AC and
-transient, `.ic`/UIC). Controlled sources and a CLI are next (see the roadmap in `CLAUDE.md`).
+**Status:** parser, DC, AC, transient, diodes and level-1 MOSFETs with Newton-Raphson (DC, AC, transient), `.ic`/UIC,
+controlled sources with op-amps, adaptive time stepping, a command line, sparse solves and a CI workflow are done (see the
+roadmap in `CLAUDE.md`).
 
 ## Install and quick start
 
 ```
 pip install -e .[dev]
 pytest -q
+spicelite run examples/rc_lowpass.cir --csv out --plot out     # run a netlist: tables, CSV, PNG
 python -m spicelite.plotting      # regenerate the plots in docs/
 ```
+
+## Command line
+
+```
+spicelite run NETLIST [--csv DIR] [--plot DIR] [--solver auto|dense|sparse] [-q]
+spicelite --version | --help
+```
+
+`run` executes every analysis the netlist asks for (`.op`, `.dc`, `.ac`, `.tran`) and prints a table for
+each (long tables show the first and last five rows). `--csv DIR` writes `<netlist>_<analysis>.csv` with every
+row (AC columns are `mag_db(...)` and `phase_deg(...)`), `--plot DIR` writes a PNG per analysis, `-q` suppresses
+the tables. A netlist with no analysis directive runs `.op` and says so on stderr.
+
+| Exit code | Meaning |
+|---|---|
+| 0 | success (warnings, e.g. an open-loop op-amp, go to stderr) |
+| 1 | the netlist or simulation failed: `NetlistError` (with its line number), singular circuit, Newton did not converge |
+| 2 | usage error or unreadable file |
 
 ```python
 from spicelite import parse
@@ -44,19 +66,25 @@ the executable.
 
 | | |
 |---|---|
-| Elements | `R`, `C`, `L`, `D` (diode), `V` and `I` (DC, `AC mag [phase_deg]`, `PULSE(...)`, `SIN(...)`) |
-| Models | `.model name D(IS=.. N=.. RS=..)` (only the diode so far) |
-| Directives | `.op`, `.dc source start stop step`, `.ac dec\|oct\|lin`, `.tran tstep tstop [uic]`, `.ic v(node)=value`, `.options method=trap\|be`, `.end` |
+| Elements | `R`, `C`, `L`, `D` (diode), `V` and `I` (DC, `AC mag [phase_deg]`, `PULSE(...)`, `SIN(...)`), controlled sources `E` (VCVS), `G` (VCCS), `F` (CCCS), `H` (CCVS); an op-amp is an `E` with gain 1e6; `M` (level-1 MOSFET) |
+| Models | `.model name D(IS=.. N=.. RS=..)`, `.model name NMOS\|PMOS(LEVEL=1 VTO=.. KP=.. LAMBDA=.. GAMMA=.. PHI=..)` |
+| Directives | `.op`, `.dc source start stop step`, `.ac dec\|oct\|lin`, `.tran tstep tstop [uic]`, `.ic v(node)=value`, `.options method=trap\|be step=fixed\|adaptive`, `.end` |
 | Values | SI suffixes `f p n u m k meg g t`, case-insensitive (`m` = milli, `meg` = mega) |
-| Linear circuits | one direct solve (DC), one solve per frequency (AC), LU factored once (transient) |
+| Linear circuits | one direct solve (DC), one solve per frequency (AC), LU factored once (transient); dense LAPACK for small circuits, sparse SuperLU from 60 unknowns up (`--solver` / `solver=` override) |
 | Diodes | Newton-Raphson with junction voltage limiting and a gmin-stepping fallback in `.op`/`.dc`; Newton at every step in `.tran` (with step halving); linearised at the bias point in `.ac` |
-| Transient methods | trapezoidal (default, 2nd order) and backward Euler (1st order, damped), fixed step |
+| Transient methods | trapezoidal (default, 2nd order) and backward Euler (1st order, damped); fixed step (default) or adaptive (local-truncation-error control) |
 | Initial state | DC solution, or with `uic` the `.ic` capacitor voltages and zero inductor currents |
 
 Anything else raises a `NetlistError` with the line number. Known limitations:
 
-* `PULSE` needs all seven values; no controlled sources yet; the time step is fixed (a failing diode
-  step is halved internally, but output stays on the fixed grid).
+* `PULSE` needs all seven values; the time step is fixed unless `.options step=adaptive` (in a fixed run a failing
+  Newton step is halved internally, but output stays on the fixed grid). Adaptive stepping needs a nonzero source rise
+  time (a zero-rise jump leaves the trapezoidal history stale for one step).
+* The op-amp model has a flat gain at every frequency (no gain-bandwidth limit, slew rate, saturation or
+  input/output impedance); an `F`/`H` can only sense a `V` source's current.
+* MOSFETs are level 1 only and have no intrinsic capacitances (Cgs, Cgd, Cgb, Cbd, Cbs) and no bulk-junction diodes
+  beyond their GMIN conductance: the switching delay of a CMOS stage comes only from the load capacitor you add, and a
+  bulk biased more than ~0.6 V above a channel terminal does not conduct as it does in ngspice.
 * `.ic` only sets capacitor voltages (a node with no capacitor on it is rejected) and is only used
   with `uic`; without `uic` an `.ic` line is an error rather than being silently ignored.
 * A loop made only of voltage sources and capacitors (or inductors and current sources only) has no
@@ -147,6 +175,144 @@ circuit whose time constant is much shorter than the step, the output undershoot
 true answer (here below 0 V, which a diode would never allow); backward Euler decays monotonically.
 
 ![](docs/diode_ringing.png)
+
+## Controlled sources and op-amps
+
+| | Netlist | Equation | Extra branch unknown? |
+|---|---|---|---|
+| VCVS | `E name n+ n- nc+ nc- gain` | `v(n+) - v(n-) = gain (v(nc+) - v(nc-))` | yes (a voltage output) |
+| VCCS | `G name n+ n- nc+ nc- gm` | current `gm (v(nc+) - v(nc-))` flows `n+ -> source -> n-` | no |
+| CCCS | `F name n+ n- Vsense gain` | current `gain i(Vsense)` flows `n+ -> source -> n-` | no (reuses Vsense's) |
+| CCVS | `H name n+ n- Vsense rm` | `v(n+) - v(n-) = rm i(Vsense)` | yes (a voltage output) |
+
+All four are linear and memoryless, so they stamp the same real entries in DC, in the complex AC matrix
+and in every transient step (a linear transient still factors its matrix once). The stamps are in
+`elements.py` with their patterns in the docstrings.
+
+**Sign convention (same as ngspice).** The sense current `i(Vsense)` is the branch current of a `V`
+source: positive when current flows *into its + terminal and through it*. A source that delivers power
+therefore reads negative. `G` and `F` currents, like an `I` source's, flow from `n+` through the source to
+`n-`, so `G1 out 0 in 0 2m` *pulls* current out of node `out` (a positive input gives a negative output).
+Reversing the sense source's terminals flips the sign of what `F` and `H` produce. `tests/test_controlled.py`
+checks every orientation (both sense orientations, a power-delivering sense source, swapped output and
+control terminals) against ngspice.
+
+**Op-amp.** An op-amp is an `E` with a large gain (`E1 out 0 in+ in- 1e6`; `spicelite.opamp()` builds one
+with the default `OPAMP_GAIN = 1e6`). I reused the VCVS rather than adding a new element because it needs
+no new stamp or solver code and the finite gain makes the *finite-gain error* of a closed loop visible and
+testable: the inverting amplifier's gain is `-(R2/R1) / (1 + (1 + R2/R1)/A)`, within 1e-9 of that formula
+for A from 1e2 to 1e8, and the error falls as `110/A`. The alternative, a *nullor* (an ideal op-amp that
+forces `v(in+) = v(in-)` with an unconstrained output current), is not implemented: it needs its own stamp,
+cannot be used open loop, and has no finite-gain error to study.
+
+An op-amp with no feedback path from its output to its inputs (a gain >= 1e3 `E` whose output cannot reach
+its control nodes except through ground) raises an `OpenLoopWarning`, because its output is then just
+`gain x` the differential input. A floating input is a `SingularCircuitError` naming the node.
+
+### Examples against ngspice
+
+| Inverting amplifier | Integrator | Sallen-Key low-pass |
+|---|---|---|
+| gain -10, DC + AC + `.dc` | `v(out) = -(1/RC) integral v(in)` | `f0 = 562.7 Hz`, `Q = 1.414` |
+
+![](docs/bode_sallen_key_lp.png)
+
+The Sallen-Key response matches the second-order transfer function to 1e-5 (the follower's finite gain
+accounts for the rest); `|H(f0)| = Q` to 1e-5 with phase -90 degrees, and the peak frequency and height
+match `f0 sqrt(1 - 1/(2Q^2))` and `Q / sqrt(1 - 1/(4Q^2))`.
+
+![](docs/wave_integrator.png)
+
+Against ngspice: linear DC and `.dc` agree exactly, AC to 3e-15 relative, and transient to 1e-5 of peak
+(the O(h^2) trapezoidal error, as for the other RC circuits; the integrator is 5e-7).
+
+## MOSFETs (level 1, Shichman-Hodges)
+
+`M name drain gate source bulk model [W=..] [L=..]` with `.model name NMOS|PMOS (LEVEL=1 VTO KP LAMBDA GAMMA PHI)`
+(W and L default to ngspice's 100 um; VTO keeps its natural sign, so an enhancement PMOS has `VTO=-1`). With
+beta = KP W/L, Vov = Vgs - Vth and Vth = VTO + GAMMA (sqrt(PHI - Vbs) - sqrt(PHI)):
+
+| Region | Condition | Id |
+|---|---|---|
+| cutoff | Vov <= 0 | 0 |
+| triode | Vds < Vov | beta (Vov Vds - Vds^2/2)(1 + LAMBDA Vds) |
+| saturation | Vds >= Vov | beta/2 Vov^2 (1 + LAMBDA Vds) |
+
+A PMOS is the NMOS equations with every voltage and current negated; if Vds changes sign the drain and source swap roles
+(the channel is symmetric). Newton linearises the device into gm, gds and gmbs plus a current source (`elements.stamp_mosfet`),
+limits Vgs and Vds each iteration exactly as SPICE's `fetlim` and `limvds` do, and falls back to gmin stepping. In AC
+the device is its three conductances at the bias point. Both bulk junctions contribute only their 1e-12 S GMIN
+(this is what keeps a node of cut-off devices solvable, and matches ngspice's default). Circuits with MOSFETs stay on the dense solver.
+
+![](docs/iv_nmos.png)
+
+![](docs/transfer_cmos_inverter.png)
+
+| Example | Analysis | Tolerance vs ngspice | Observed worst |
+|---|---|---|---|
+| `nmos_iv` (4 gate voltages) | `.dc` | 1e-9 of peak | 8e-12 |
+| `cmos_inverter_vtc` | `.dc` | 5e-8 of peak | 6.5e-10 (3.3e-9 V at the switching point) |
+| `nmos_common_source` | `.op` / `.ac` | 1e-9 / 1e-6 relative | 1e-11 / ~1e-9 |
+| `cmos_inverter_tran` | `.tran` (0.0125 ns) | 1.2e-3 of peak | 2.6e-4 (O(h^2): 4x per halving of h) |
+| body-effect follower, PMOS load, reverse conduction (inline netlists) | `.dc` | 1e-8 of peak | see `tests/test_mosfet.py` |
+
+![](docs/wave_cmos_inverter_tran.png)
+
+## Step control and initial conditions
+
+`.tran tstep tstop [uic]` is fixed-step by default (trapezoidal, LU factored once). `.options step=adaptive`
+(or `tran(circuit, adaptive=True)` / `adaptive=StepControl(rtol=..., hmin=..., hmax=..., max_steps=...)`) switches
+to **local-truncation-error control**: after every step the error is estimated from divided differences of the
+accepted points (trap: h^3 |DD3| / 2, backward Euler: h^2 |DD2|, no extra solve), a step is accepted if it is within
+`rtol` of each unknown (default 1e-4, plus 1 uV / 1 nA floors), and the next step is h (0.9 r^(-1/(p+1))) limited to
+0.5x-2x, rounded down to hmax / 2^k so factored matrices are reused. Steps land exactly on every PULSE / SIN corner (the
+history restarts at `tstep` after a corner). `tstep` is the initial and restart step, `hmax` defaults to tstop / 50,
+`hmin` to tstop x 1e-9; going below `hmin` or past `max_steps` raises a `ConvergenceError` that says where.
+`adaptive=False` forces the fixed-step path, which is unchanged (`tests/test_regression.py`).
+
+| Circuit | Fixed | Adaptive | Max error |
+|---|---|---|---|
+| `rc_step`-style RC, 5 ms, tau = 1 ms (trap) | 5001 steps (1 us) | 94 steps | 6.8e-5 (analytic) |
+| `stiff_adaptive` (tau = 1 us and 10 ms, 50 ms) | 5000 steps: error 0.17; no fixed step under 5e5 steps reaches 5e-2 | 191 steps | 5e-4 (analytic), 3.3e-4 of peak vs ngspice |
+| `rlc_ring_adaptive` (Q ~ 10, 4 ms) | ngspice: ~20000 points | 2154 steps (38 rejected) | 4.7e-3 of peak vs ngspice (accumulated over ~20 periods) |
+
+![](docs/adaptive_steps_stiff.png)
+
+![](docs/adaptive_steps.png)
+
+The cost: the matrix depends on h, so an adaptive linear run re-factors whenever h changes (few distinct sizes thanks to the
+power-of-two grid), where a fixed-step run factors once. It pays off when it saves many more steps than that, as above;
+for a circuit with one time scale the fixed-step fast path is cheaper. The global error is the per-step error accumulated over
+the run (an oscillator with Q ~ 10 over 20 periods ends ~50x above rtol), and falls roughly as rtol^(2/3).
+
+**Initial conditions.** `.ic v(node)=value` with `.tran ... uic` skips the DC operating point: capacitor voltages start at the
+given values (unspecified nodes at 0, inductor currents at 0), which also works for circuits that have no DC solution
+(`examples/rc_ic_discharge.cir`: a capacitor discharging through a resistor from 5 V, compared with the analytic exponential and
+ngspice).
+
+## Sparse solves and benchmark
+
+An MNA matrix is mostly zeros (each element touches only its own nodes), so `spicelite.sparse` assembles it as
+(row, col, value) triples (every stamp is a `+=`, so the same stamp functions serve both paths), converts to
+CSC and factors with SuperLU. `solver="auto"` (the default) picks dense below 60 unknowns, where LAPACK on
+a tiny matrix is faster than sparse bookkeeping, and sparse from there on. Dense and sparse give the same answers
+to round-off on every example (`tests/test_sparse.py`, 1e-9 relative). Circuits with diodes stay dense, because the
+Newton loop edits a dense copy of the matrix each iteration; `solver="sparse"` on such a circuit is an error.
+
+`python benchmarks/bench_sparse.py` times a long RC ladder (best of 3, 1 for the largest; assembly included;
+`.tran` is 100 trapezoidal steps, so one factorisation plus 100 back-substitutions). Measured on the
+author's Windows 11 laptop, Python 3.12, scipy 1.18:
+
+| sections | unknowns | .op dense | .op sparse | speed-up | .tran dense | .tran sparse | speed-up |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 100 | 102 | 0.0480 s | 0.0013 s | 37.5x | 0.2205 s | 0.0237 s | 9.3x |
+| 1000 | 1002 | 0.8634 s | 0.0113 s | 76.7x | 2.9051 s | 0.2560 s | 11.3x |
+| 10000 | 10002 | 5.2920 s | 0.1183 s | 44.7x | 43.3431 s | 3.2395 s | 13.4x |
+
+Below about 60 unknowns dense wins or ties (12 unknowns: 0.2 ms dense vs 0.5 ms sparse for `.op`), which is why
+`auto` keeps tiny circuits dense. The ladder is the best case for sparse (a tridiagonal matrix); a circuit
+where every node connects to every other would see little benefit. Timings are noisy at the small end: the
+100-section dense `.op` ranges from 0.01 to 0.05 s between runs, depending on when the BLAS thread pool wakes up.
 
 ## Initial conditions: `.ic` and `uic`
 

@@ -1,0 +1,8 @@
+Series RLC ringing (f0 ~ 5 kHz, Q ~ 10) with adaptive stepping: small steps while it rings, larger as it decays
+V1 in 0 PULSE(0 1 0 1u 1u 10m 20m)
+R1 in a 10
+L1 a b 10m
+C1 b 0 100n
+.options step=adaptive
+.tran 2u 4m
+.end

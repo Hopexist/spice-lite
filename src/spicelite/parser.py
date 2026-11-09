@@ -6,16 +6,38 @@ import math
 import re
 from decimal import Decimal
 
-from .circuit import (AcSweep, Capacitor, Circuit, CurrentSource, DcSweep, Diode, DiodeModel,
-                      Inductor, NetlistError, Pulse, Resistor, Sin, TranSpec, VoltageSource)
+from .circuit import (
+    CCCS,
+    CCVS,
+    VCCS,
+    VCVS,
+    AcSweep,
+    Capacitor,
+    Circuit,
+    CurrentSource,
+    DcSweep,
+    Diode,
+    DiodeModel,
+    Inductor,
+    Mosfet,
+    MosModel,
+    NetlistError,
+    Pulse,
+    Resistor,
+    Sin,
+    TranSpec,
+    VoltageSource,
+)
 
 # "meg" must be tried before "m" (milli), or 1meg would parse as 1 milli.
 _SUFFIX = {"meg": 6, "f": -15, "p": -12, "n": -9, "u": -6, "m": -3, "k": 3, "g": 9, "t": 12}  # powers of 10
 _VALUE = re.compile(r"^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(meg|[fpnumkgt])?$")
 _WAVE = re.compile(r"\b(pulse|sin)\s*\(([^)]*)\)")
 _METHOD = re.compile(r"method=(trap|be)")
+_STEP = re.compile(r"step=(fixed|adaptive)")
 _MODEL = re.compile(r"\.model\s+(\S+)\s+([a-z]+)\s*\(?([^)]*)\)?\s*$")
 _MODEL_PARAMS = ("is", "n", "rs")
+_MOS_PARAMS = ("level", "vto", "kp", "lambda", "gamma", "phi")
 _TWO_TERMINAL = {"r": (Resistor, "resistance"), "c": (Capacitor, "capacitance"),
                  "l": (Inductor, "inductance")}
 
@@ -107,27 +129,54 @@ def _parse_tran(tokens: list[str], num: int) -> TranSpec:
         raise NetlistError(str(err), num) from None
 
 
-def _parse_model(low: str, num: int) -> DiodeModel:
-    """`.model name D(IS=.. N=.. RS=..)`; type and parameter names are case-insensitive (the
-    caller lowercases the line). Only the D type and the IS, N, RS parameters exist so far."""
+def _parse_model(low: str, num: int) -> DiodeModel | MosModel:
+    """`.model name D(IS=.. N=.. RS=..)` or `.model name NMOS|PMOS(LEVEL=1 VTO=.. KP=.. LAMBDA=.. GAMMA=.. PHI=..)`;
+    type and parameter names are case-insensitive (the caller lowercases the line)."""
     m = _MODEL.match(low)
     if not m:
-        raise NetlistError(".model needs: .model <name> D(IS=.. N=.. RS=..)", num)
+        raise NetlistError(".model needs: .model <name> D|NMOS|PMOS(<param>=<value> ...)", num)
     name, kind, body = m.groups()
-    if kind != "d":
-        raise NetlistError(f"unsupported model type {kind!r}; only D (diode) is supported", num)
+    if kind not in ("d", "nmos", "pmos"):
+        raise NetlistError(f"unsupported model type {kind!r}; supported: D, NMOS, PMOS", num)
+    mos = kind != "d"
+    allowed = _MOS_PARAMS if mos else _MODEL_PARAMS
     values: dict[str, float] = {}
     for item in re.sub(r"\s*=\s*", "=", body.replace(",", " ")).split():
         key, eq, val = item.partition("=")
-        if not eq or key not in _MODEL_PARAMS:
-            raise NetlistError(f"unsupported diode parameter {item!r}; supported: IS, N, RS", num)
+        if not eq or key not in allowed:
+            raise NetlistError(f"unsupported {'MOS' if mos else 'diode'} parameter {item!r}; supported: "
+                               + ", ".join(k.upper() for k in allowed), num)
         if key in values:
-            raise NetlistError(f"duplicate diode parameter {key.upper()!r}", num)
+            raise NetlistError(f"duplicate model parameter {key.upper()!r}", num)
         values[key] = parse_value(val, num)
     try:
+        if mos:
+            if values.pop("level", 1) != 1:
+                raise NetlistError("only LEVEL=1 (Shichman-Hodges) MOSFET models are supported", num)
+            return MosModel(name, kind, **{k.upper(): v for k, v in values.items()})
         return DiodeModel(name, **{k.upper(): v for k, v in values.items()})
     except ValueError as err:
         raise NetlistError(str(err), num) from None
+
+
+def _parse_mosfet(low: str, num: int) -> Mosfet:
+    """`M<name> drain gate source bulk model [W=..] [L=..]` (the caller lowercases the line). W and L
+    default to ngspice's 100 um when omitted."""
+    tokens = re.sub(r"\s*=\s*", "=", low).split()
+    pos = [t for t in tokens[1:] if "=" not in t]
+    if len(pos) != 5:
+        raise NetlistError(f"{tokens[0]!r} needs exactly: drain gate source bulk model [W=..] [L=..]", num)
+    dims: dict[str, float] = {}
+    for item in (t for t in tokens[1:] if "=" in t):
+        key, _, val = item.partition("=")
+        if key not in ("w", "l"):
+            raise NetlistError(f"unsupported MOSFET parameter {item!r}; supported: W, L", num)
+        if key in dims:
+            raise NetlistError(f"duplicate MOSFET parameter {key.upper()!r}", num)
+        dims[key] = parse_value(val, num)
+        if dims[key] <= 0:
+            raise NetlistError(f"{tokens[0]!r}: {key.upper()} must be positive", num)
+    return Mosfet(tokens[0], *pos, **{k.upper(): v for k, v in dims.items()})
 
 
 def _parse_dc(tokens: list[str], num: int) -> DcSweep:
@@ -158,13 +207,31 @@ def _parse_ic(low: str, num: int) -> dict[str, float]:
     return out
 
 
+def _parse_controlled(kind: str, tokens: list[str], num: int):
+    """E/G: `name n+ n- nc+ nc- value` (6 fields). F/H: `name n+ n- Vsense value` (5 fields)."""
+    name = tokens[0]
+    voltage_controlled = kind in "eg"
+    want = 6 if voltage_controlled else 5
+    if len(tokens) != want:
+        fields = "n+ n- nc+ nc- value" if voltage_controlled else "n+ n- Vsense value"
+        raise NetlistError(f"{name!r} needs exactly: {name} {fields} ({want} fields, got {len(tokens)})", num)
+    value = parse_value(tokens[-1], num)
+    if voltage_controlled:
+        return (VCVS if kind == "e" else VCCS)(name, *tokens[1:5], value)
+    if tokens[3] == name:
+        raise NetlistError(f"{name!r} cannot sense its own current", num)
+    return (CCCS if kind == "f" else CCVS)(name, tokens[1], tokens[2], tokens[3], value)
+
+
 def parse(text: str) -> Circuit:
     # The title is always line 1, even if it looks like a comment or element.
+    """Parse netlist text into a Circuit; raises NetlistError (with a line number) on anything unsupported."""
     lines = text.splitlines()
     circuit = Circuit(title=lines[0].strip() if lines else "")
     body = "\n".join(["", *lines[1:]])  # blank first line keeps numbering aligned
     seen: set[str] = set()
     diode_lines: dict[str, int] = {}  # for errors that can only be found once all lines are read
+    sense_lines: dict[str, int] = {}  # F/H elements -> line, to check their sense source at the end
     dc_line = ic_line = 0
 
     for num, line in _logical_lines(body):
@@ -211,18 +278,34 @@ def parse(text: str) -> Circuit:
                 circuit.tran = _parse_tran(tokens, num)
                 continue
             if name in (".options", ".option"):
-                m = _METHOD.fullmatch("".join(tokens[1:]))
-                if not m:
-                    raise NetlistError("unsupported option; only 'method=trap' or 'method=be'", num)
-                circuit.method = m.group(1)
+                items = re.sub(r"\s*=\s*", "=", " ".join(tokens[1:])).split()
+                if not items:
+                    raise NetlistError("unsupported option; supported: method=trap|be, step=fixed|adaptive", num)
+                for item in items:
+                    if m := _METHOD.fullmatch(item):
+                        circuit.method = m.group(1)
+                    elif m := _STEP.fullmatch(item):
+                        circuit.step_control = m.group(1)
+                    else:
+                        raise NetlistError(f"unsupported option {item!r}; supported: method=trap|be, "
+                                           "step=fixed|adaptive", num)
                 continue
             raise NetlistError(f"unsupported directive {name!r}", num)
         kind = name[0]
-        if kind not in "rclvid":
+        if kind not in "rclvidegfhm":
             raise NetlistError(f"unsupported element {name!r}", num)
         if name in seen:
             raise NetlistError(f"duplicate element name {name!r}", num)
         seen.add(name)
+        if kind == "m":
+            circuit.elements.append(_parse_mosfet(low, num))
+            diode_lines[name] = num  # same end-of-netlist model lookup as a diode
+            continue
+        if kind in "egfh":  # controlled sources have their own, fixed field counts
+            circuit.elements.append(_parse_controlled(kind, tokens, num))
+            if kind in "fh":
+                sense_lines[name] = num
+            continue
         if len(tokens) < (3 if wave else 4):
             raise NetlistError(f"{name!r} needs two nodes and a value", num)
         a, b = tokens[1], tokens[2]
@@ -243,14 +326,27 @@ def parse(text: str) -> Circuit:
             cls = VoltageSource if kind == "v" else CurrentSource
             circuit.elements.append(cls(name, a, b, *_source_values(tokens, num), wave))
     # Checks that need the whole netlist (a .model or the swept source may come after its user).
-    for d in circuit.diodes():
-        if d.model_name not in circuit.models:
-            raise NetlistError(f"diode {d.name!r} uses unknown model {d.model_name!r}", diode_lines[d.name])
-        d.model = circuit.models[d.model_name]
+    for d in circuit.nonlinear():
+        what, want = ("diode", DiodeModel) if isinstance(d, Diode) else ("MOSFET", MosModel)
+        model = circuit.models.get(d.model_name)
+        if model is None:
+            raise NetlistError(f"{what} {d.name!r} uses unknown model {d.model_name!r}", diode_lines[d.name])
+        if not isinstance(model, want):
+            raise NetlistError(f"{what} {d.name!r} uses model {d.model_name!r}, which is not a "
+                               f"{'D' if want is DiodeModel else 'NMOS/PMOS'} model", diode_lines[d.name])
+        d.model = model
     if circuit.dc is not None:
         src = next((e for e in circuit.elements if e.name == circuit.dc.source), None)
         if not isinstance(src, (VoltageSource, CurrentSource)):
             raise NetlistError(f".dc source {circuit.dc.source!r} is not a V or I source in this netlist", dc_line)
+    by_name = {e.name: e for e in circuit.elements}
+    for name, line in sense_lines.items():
+        sense = by_name[name].sense
+        if sense not in by_name:
+            raise NetlistError(f"{name!r} senses the current of {sense!r}, which is not in the circuit", line)
+        if not isinstance(by_name[sense], VoltageSource):
+            raise NetlistError(f"{name!r} senses {sense!r}, which is not a voltage source (V...); "
+                               "only a V source's branch current can be sensed", line)
     if circuit.ic:
         nodes = circuit.node_index()
         for node in circuit.ic:
@@ -262,5 +358,6 @@ def parse(text: str) -> Circuit:
 
 
 def parse_file(path: str) -> Circuit:
+    """Read a UTF-8 netlist file and parse it."""
     with open(path, encoding="utf-8") as f:
         return parse(f.read())

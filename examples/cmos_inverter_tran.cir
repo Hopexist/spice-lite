@@ -1,0 +1,10 @@
+CMOS inverter driving a 1 pF load, 5 V PULSE input (no intrinsic MOS capacitances: the only C is the load)
+Vdd vdd 0 DC 5
+Vin in 0 DC 0 PULSE(0 5 2n 0.2n 0.2n 10n 24n)
+MN out in 0 0 nm W=10u L=1u
+MP out in vdd vdd pm W=20u L=1u
+CL out 0 1p
+.model nm NMOS (LEVEL=1 VTO=1 KP=100u LAMBDA=0.02)
+.model pm PMOS (LEVEL=1 VTO=-1 KP=50u LAMBDA=0.02)
+.tran 0.0125n 30n
+.end

@@ -1,0 +1,9 @@
+Unity-gain Sallen-Key low-pass: f0 = 1/(2 pi R sqrt(C1 C2)) = 562.7 Hz, Q = sqrt(C1/C2)/2 = 1.414
+V1 in 0 DC 0 AC 1
+R1 in n1 10k
+R2 n1 n2 10k
+C1 n1 out 80n
+C2 n2 0 10n
+E1 out 0 n2 out 1e6
+.ac dec 40 10 100k
+.end

@@ -5,13 +5,14 @@ import pytest
 
 from spicelite import parse
 from spicelite.analysis.ac import ac
-from spicelite.analysis.dc import op
+from spicelite.analysis.dc import dc_sweep, op
 from spicelite.analysis.tran import tran
-from spicelite.ngspice import find_ngspice, run_ac, run_op, run_tran
+from spicelite.ngspice import find_ngspice, run_ac, run_dc, run_op, run_tran
 
 EXAMPLES = sorted((Path(__file__).parent.parent / "examples").glob("*.cir"))
 AC_EXAMPLES = [p for p in EXAMPLES if parse(p.read_text()).ac is not None]
-TRAN_EXAMPLES = [p for p in EXAMPLES if parse(p.read_text()).tran is not None]
+# stiff_adaptive has its own ngspice test (test_adaptive.py): ngspice with tmax = tstep / 10 = 0.1 ns would need 5e8 points
+TRAN_EXAMPLES = [p for p in EXAMPLES if parse(p.read_text()).tran is not None and p.name != "stiff_adaptive.cir"]
 
 # Allowed |spicelite - ngspice| as a FRACTION OF THE SIGNAL'S PEAK, per transient example.
 # ngspice runs with reltol=1e-6 and tmax = tstep/10, so it is the accurate side: the gap is
@@ -25,7 +26,21 @@ TRAN_TOL = {"rc_step.cir": 5e-5, "rlc_ring.cir": 1e-3, "sin_rl.cir": 5e-4,
             # rectifier 1.2e-3 (its source current is a train of narrow diode-turn-on pulses, so
             # timing error shows most there), clamp 1.1e-4, UIC RC discharge 1.0e-5, UIC RLC 2.4e-4.
             "diode_rectifier_tran.cir": 5e-3, "diode_clamp_tran.cir": 5e-4,
-            "rc_discharge_uic.cir": 5e-5, "rlc_uic.cir": 1e-3}
+            "rc_discharge_uic.cir": 5e-5, "rlc_uic.cir": 1e-3,
+            # Milestone 5 (controlled sources): the four small circuits are RC step responses, so
+            # the same O(h^2) error as rc_step: observed 1.0e-5 of peak, tolerance 5e-5. The
+            # op-amp integrator (1 V ramp over 2 ms, 10 us step): observed 4.9e-7, tolerance 2.5e-6.
+            "vcvs_e.cir": 5e-5, "vccs_g.cir": 5e-5, "cccs_f.cir": 5e-5, "ccvs_h.cir": 5e-5,
+            "integrator.cir": 2.5e-6,
+            # Milestone 8: CMOS inverter, 1 pF load, 0.0125 ns step. Same O(h^2) story (the gap fell
+            # 2.1e-2 -> 5.2e-3 -> 1.3e-3 -> 3.3e-4 V as h went 0.05 -> 0.00625 ns: 4x per halving).
+            # Observed worst 2.6e-4 of peak (v(out), at the switching edge); supply current 2.1e-4.
+            "cmos_inverter_tran.cir": 1.2e-3,
+            # Milestone 9. rc_ic_discharge: UIC discharge on the fixed 10 us grid, observed 1.0e-5 of peak,
+            # tolerance 5e-5. rlc_ring_adaptive: ADAPTIVE steps (rtol 1e-4, ~2150 steps vs ngspice ~20000);
+            # the error is per-step LTE accumulated over ~20 ring periods (Q ~ 10), observed 4.7e-3 on v(b) and
+            # 9.4e-3 on the loop current, tolerance 4e-2. (test_adaptive.py shows it falls ~ rtol^(2/3).)
+            "rc_ic_discharge.cir": 5e-5, "rlc_ring_adaptive.cir": 4e-2}
 # ngspice linearises a diode at ITS bias point, which with default tolerances is only good to
 # ~1e-4 (observed 1.3e-4 relative on diode_ac). Tightening the options is harmless for linear
 # circuits and brings the diode example to 6e-11, so every AC comparison uses them.
@@ -36,7 +51,7 @@ needs_ngspice = pytest.mark.skipif(
     reason="ngspice not found: put ngspice_con.exe/ngspice.exe on PATH or set NGSPICE=<path to exe>")
 
 
-LINEAR_EXAMPLES = [p for p in EXAMPLES if not parse(p.read_text()).diodes()]
+LINEAR_EXAMPLES = [p for p in EXAMPLES if not parse(p.read_text()).nonlinear()]
 
 
 @needs_ngspice
@@ -52,6 +67,23 @@ def test_op_matches_ngspice(path):
         assert v == pytest.approx(ref.voltages[name], rel=1e-9, abs=1e-15), name
     for name, i in mine.currents.items():
         assert i == pytest.approx(ref.currents[name], rel=1e-9, abs=1e-15), name
+
+
+LINEAR_DC_EXAMPLES = [p for p in LINEAR_EXAMPLES if parse(p.read_text()).dc is not None]
+
+
+@needs_ngspice
+@pytest.mark.parametrize("path", LINEAR_DC_EXAMPLES, ids=lambda p: p.name)
+def test_linear_dc_sweep_matches_ngspice(path):
+    text = path.read_text()
+    mine, ref = dc_sweep(parse(text)), run_dc(text)
+    assert np.allclose(mine.sweep, ref.sweep, atol=1e-12)
+    # Linear DC is one direct solve in both tools: 1e-9 of peak, same rationale as the .op test
+    # (observed worst case over all signals: 0).
+    for kind in ("voltages", "currents"):
+        for name, a in getattr(mine, kind).items():
+            b = getattr(ref, kind)[name]
+            assert np.abs(a - b).max() <= 1e-9 * max(np.abs(b).max(), 1e-12), name
 
 
 @needs_ngspice

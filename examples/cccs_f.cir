@@ -1,0 +1,12 @@
+CCCS (F): sense current i(Vs) = v(in)/1k flows into Vs's + terminal; F draws 10 i(Vs) out of v(out): v(out) = -10 v(in)
+V1 in 0 DC 1 AC 1 PULSE(0 1 0 10u 10u 3m 6m)
+R2 in m 1k
+Vs m 0 0
+F1 out 0 Vs 10
+R1 out 0 1k
+C1 out 0 1u
+.op
+.dc V1 -2 2 1
+.ac dec 10 10 100k
+.tran 10u 5m
+.end

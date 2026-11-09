@@ -1,0 +1,10 @@
+NMOS common-source amplifier: Vgs = 1.5 V biases it in saturation, gain ~ -gm (Rd || ro) ~ -2.5, 10 pF load
+Vdd vdd 0 DC 5
+Vin in 0 DC 1.5 AC 1
+Rd vdd out 5k
+M1 out in 0 0 nm W=20u L=2u
+CL out 0 10p
+.model nm NMOS (LEVEL=1 VTO=1 KP=100u LAMBDA=0.02)
+.op
+.ac dec 10 1k 1g
+.end

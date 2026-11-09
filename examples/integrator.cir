@@ -1,0 +1,7 @@
+Op-amp integrator, RC = 1 ms: v(out) = -(1/RC) integral of v(in); ramps -1 V per ms of 1 V input, then holds
+V1 in 0 DC 0 PULSE(0 1 0 10u 10u 1m 4m)
+R1 in inn 10k
+C1 inn out 100n
+E1 out 0 0 inn 1e6
+.tran 10u 2m
+.end

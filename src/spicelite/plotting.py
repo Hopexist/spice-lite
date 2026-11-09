@@ -93,6 +93,86 @@ def sweep_plot(x: np.ndarray, mine: np.ndarray, path: str | Path, title: str = "
     plt.close(fig)
 
 
+def signals_plot(kind: str, header: list[str], data: np.ndarray, path: str | Path, title: str = "") -> None:
+    """Plot the CLI's result table (column 0 is the x axis) as a PNG. kind: "dc" and "tran" draw
+    every signal against x; "ac" draws magnitude (dB) over phase (deg) against log frequency
+    (the table's mag_db(...) / phase_deg(...) columns)."""
+    x = data[:, 0]
+    if kind == "ac":
+        fig, (ax_m, ax_p) = plt.subplots(2, 1, sharex=True, figsize=(7, 6))
+        for k, name in enumerate(header[1:], start=1):
+            ax = ax_m if name.startswith("mag_db") else ax_p
+            ax.semilogx(x, data[:, k], label=name[name.index("(") + 1:-1])  # "mag_db(v(out))" -> "v(out)"
+        ax_m.set_ylabel("Magnitude (dB)")
+        ax_p.set_ylabel("Phase (deg)")
+        ax_p.set_xlabel("Frequency (Hz)")
+        axes = (ax_m, ax_p)
+    else:
+        fig, ax = plt.subplots(figsize=(7, 4.5))
+        for k, name in enumerate(header[1:], start=1):
+            ax.plot(x, data[:, k], label=name)
+        ax.set_xlabel(header[0])
+        axes = (ax,)
+    axes[0].set_title(title)
+    axes[0].legend(fontsize=8)
+    for ax in axes:
+        ax.grid(True, which="both", alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+
+
+def iv_family(path: str | Path, example: str = "examples/nmos_iv.cir", vgs_values=(1.5, 2.0, 2.5, 3.0)) -> None:
+    """Id vs Vds family of curves: one `.dc` per gate voltage (the example's Vgs value is replaced
+    each time), spicelite solid and ngspice dashed where installed. Id is minus the Vds source's
+    branch current (SPICE sign: a source feeding the drain reads negative)."""
+    text = Path(example).read_text()
+    ng = find_ngspice() is not None
+    fig, ax = plt.subplots(figsize=(7, 4.8))
+    for k, vgs in enumerate(vgs_values):
+        net = text.replace("Vgs g 0 DC 2.5", f"Vgs g 0 DC {vgs}")
+        mine = dc_sweep(parse(net))
+        ax.plot(mine.sweep, -1e3 * mine.currents["vds"], lw=2.5, color=f"C{k}", label=f"Vgs = {vgs:g} V")
+        if ng:
+            ref = run_dc(net, "reltol=1e-9 abstol=1e-15 vntol=1e-12")
+            ax.plot(ref.sweep, -1e3 * ref.currents["vds"], "k--", lw=1.0, label="ngspice" if k == 0 else None)
+    ax.set_xlabel("Vds (V)")
+    ax.set_ylabel("Id (mA)")
+    ax.set_title("NMOS output characteristics (level 1, VTO = 1 V, beta = 1 mA/V^2, lambda = 0.02)")
+    ax.title.set_fontsize(9)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+
+
+def adaptive_steps_plot(path: str | Path, example: str = "examples/rlc_ring_adaptive.cir",
+                        nodes: tuple[str, ...] = ("b",), logx: bool = False) -> None:
+    """The waveform with a dot at every accepted adaptive time point (top) and the step size h = dt
+    against time on a log axis (bottom): h shrinks where the waveform bends and grows as it decays,
+    and drops back to tstep after each source corner."""
+    r = tran(parse(Path(example).read_text()), adaptive=True)
+    fig, (ax, ax_h) = plt.subplots(2, 1, sharex=True, figsize=(7, 6), gridspec_kw={"height_ratios": [3, 2]})
+    t = np.maximum(r.time, r.time[1] / 10)  # a log axis cannot show t = 0
+    for k, node in enumerate(nodes):
+        ax.plot(t * 1e3, r.voltages[node], "-", lw=1.2, color="0.5")
+        ax.plot(t * 1e3, r.voltages[node], ".", ms=3, color=f"C{k}", label=f"v({node}), {len(r.time)} accepted steps")
+    ax.set_ylabel("Voltage (V)")
+    ax.set_title(f"Adaptive stepping: {Path(example).stem} ({r.rejected} steps rejected)")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    ax_h.semilogy(t[1:] * 1e3, np.diff(r.time) * 1e6, ".", ms=3, color="tab:red")
+    if logx:
+        ax.set_xscale("log")
+    ax_h.set_ylabel("step h (us)")
+    ax_h.set_xlabel("Time (ms)")
+    ax_h.grid(True, which="both", alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+
+
 def diode_ringing_demo(path: str | Path) -> None:
     """Half-wave rectifier into a FAST RC (tau = 10 us) with a 50 us step: when the diode turns
     off the output decays much faster than the step. Trapezoidal undershoots below 0 V and rings
@@ -157,7 +237,8 @@ def main(examples_dir: str = "examples", out_dir: str = "docs") -> None:
     note = "" if have_ngspice else " (spicelite only: ngspice not found)"
     # ngspice linearises diodes at its own bias point, so tighten it (harmless for linear circuits)
     tight = "reltol=1e-9 abstol=1e-15 vntol=1e-12"
-    for name, node in (("rc_lowpass", "out"), ("rl_highpass", "out"), ("rlc_bandpass", "out"), ("diode_ac", "a")):
+    for name, node in (("rc_lowpass", "out"), ("rl_highpass", "out"), ("rlc_bandpass", "out"), ("diode_ac", "a"),
+                       ("sallen_key_lp", "out"), ("nmos_common_source", "out")):
         path = Path(examples_dir) / f"{name}.cir"
         mine = ac(parse_file(str(path)))
         # Each example has a 1 V AC source, so the node voltage is the transfer function.
@@ -168,7 +249,8 @@ def main(examples_dir: str = "examples", out_dir: str = "docs") -> None:
     # (example, plotted node, faint context node or None)
     for name, node, ctx in (("rc_step", "out", None), ("rlc_ring", "out", None), ("sin_rl", "out", None),
                             ("diode_rectifier_tran", "out", "in"), ("diode_clamp_tran", "out", "in"),
-                            ("rc_discharge_uic", "out", None), ("rlc_uic", "a", None)):
+                            ("rc_discharge_uic", "out", None), ("rlc_uic", "a", None),
+                            ("integrator", "out", "in"), ("cmos_inverter_tran", "out", "in")):
         path = Path(examples_dir) / f"{name}.cir"
         mine = tran(parse_file(str(path)))
         ref = run_tran(path.read_text()) if have_ngspice else None
@@ -176,6 +258,19 @@ def main(examples_dir: str = "examples", out_dir: str = "docs") -> None:
                  ref.time if ref else None, ref.voltages[node] if ref else None,
                  mine.voltages[ctx] if ctx else None, f"v({ctx})")
         print(f"wrote {out_dir}/wave_{name}.png{note}")
+    adaptive_steps_plot(Path(out_dir) / "adaptive_steps.png", str(Path(examples_dir) / "rlc_ring_adaptive.cir"))
+    print(f"wrote {out_dir}/adaptive_steps.png")
+    adaptive_steps_plot(Path(out_dir) / "adaptive_steps_stiff.png", str(Path(examples_dir) / "stiff_adaptive.cir"),
+                        ("fast", "slow"), logx=True)
+    print(f"wrote {out_dir}/adaptive_steps_stiff.png")
+    iv_family(Path(out_dir) / "iv_nmos.png", str(Path(examples_dir) / "nmos_iv.cir"))
+    print(f"wrote {out_dir}/iv_nmos.png{note}")
+    path = Path(examples_dir) / "cmos_inverter_vtc.cir"
+    mine = dc_sweep(parse_file(str(path)))
+    ref = run_dc(path.read_text(), tight) if have_ngspice else None
+    sweep_plot(mine.sweep, mine.voltages["out"], Path(out_dir) / "transfer_cmos_inverter.png",
+               "CMOS inverter voltage-transfer curve", "Vin (V)", "v(out) (V)", ref.voltages["out"] if ref else None)
+    print(f"wrote {out_dir}/transfer_cmos_inverter.png{note}")
     ringing_demo(Path(out_dir) / "trap_ringing.png")
     print(f"wrote {out_dir}/trap_ringing.png")
     diode_ringing_demo(Path(out_dir) / "diode_ringing.png")

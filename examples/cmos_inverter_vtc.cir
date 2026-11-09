@@ -1,0 +1,9 @@
+CMOS inverter voltage-transfer curve (symmetric: betaN = betaP = 1 mA/V^2, VTN = -VTP = 1 V, VDD = 5 V)
+Vdd vdd 0 DC 5
+Vin in 0 DC 0
+MN out in 0 0 nm W=10u L=1u
+MP out in vdd vdd pm W=20u L=1u
+.model nm NMOS (LEVEL=1 VTO=1 KP=100u LAMBDA=0.02)
+.model pm PMOS (LEVEL=1 VTO=-1 KP=50u LAMBDA=0.02)
+.dc Vin 0 5 0.05
+.end

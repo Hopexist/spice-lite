@@ -20,8 +20,8 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 
-from ..circuit import Circuit, ConvergenceError, Diode, Resistor, SingularCircuitError
-from ..elements import VT, diode_iv, stamp_diode
+from ..circuit import Circuit, ConvergenceError, Diode, Mosfet, Resistor, SingularCircuitError
+from ..elements import VT, diode_iv, mos_current, mos_threshold, stamp_diode, stamp_mosfet
 from ..mna import build, check_topology
 
 # Same tight tolerances the ngspice runner uses for its transient reference (ngspice's own
@@ -33,6 +33,7 @@ GMIN_STAGES = [10.0**-k for k in range(2, 13)] + [0.0]  # 1e-2 ... 1e-12, then n
 
 @dataclass
 class NewtonResult:
+    """Converged Newton solution x with its node index, iteration count and strategy."""
     x: np.ndarray  # full unknown vector for the EXPANDED circuit (see _expand)
     idx: dict[str, int]  # node name -> index in x, including hidden RS nodes "<diode>#int"
     iterations: int  # total Newton iterations, including any failed first attempt
@@ -55,6 +56,70 @@ def pnjlim(vnew: float, vold: float, vt: float, vcrit: float) -> tuple[float, bo
     return vnew, False
 
 
+def fetlim(vnew: float, vold: float, vto: float) -> float:
+    """SPICE's MOSFET gate-voltage limiter (DEVfetlim). Newton on a square-law device can jump the
+    gate from deep cutoff to far above threshold in one step; this caps how fast Vgs may move
+    near and above threshold (a step is limited to ~2 V above, and the voltage is not allowed to
+    cross threshold by more than a controlled amount in one iteration)."""
+    vtsthi = abs(2 * (vold - vto)) + 2
+    vtstlo = vtsthi / 2 + 2
+    vtox = vto + 3.5
+    delv = vnew - vold
+    if vold >= vto:
+        if vold >= vtox:
+            if delv <= 0:
+                if vnew >= vtox:
+                    if -delv > vtstlo:
+                        vnew = vold - vtstlo
+                else:
+                    vnew = max(vnew, vto + 2)
+            elif delv >= vtsthi:
+                vnew = vold + vtsthi
+        elif delv <= 0:
+            vnew = max(vnew, vto - 0.5)
+        else:
+            vnew = min(vnew, vto + 4)
+    elif delv <= 0:
+        if -delv > vtsthi:
+            vnew = vold - vtsthi
+    else:
+        vtemp = vto + 0.5
+        if vnew <= vtemp:
+            if delv > vtstlo:
+                vnew = vold + vtstlo
+        else:
+            vnew = vtemp
+    return vnew
+
+
+def limvds(vnew: float, vold: float) -> float:
+    """SPICE's drain-source voltage limiter (DEVlimvds): Vds may not triple per iteration."""
+    if vold >= 3.5:
+        if vnew > vold:
+            return min(vnew, 3 * vold + 2)
+        return max(vnew, 2.0) if vnew < 3.5 else vnew
+    return min(vnew, 4.0) if vnew > vold else max(vnew, -0.5)
+
+
+def limit_mos(raw: tuple[float, float, float], old: tuple[float, float, float], von: float):
+    """Limit a MOSFET's (vgs, vds, vbs), all in the NMOS frame, as ngspice's mos1load does. In the
+    reverse direction (vds < 0) the gate-DRAIN voltage plays the role of vgs. Returns (new, limited)."""
+    vgs, vds, vbs = raw
+    vgso, vdso, _ = old
+    vgd, vgdo = vgs - vds, vgso - vdso
+    if vdso >= 0:
+        vgs = fetlim(vgs, vgso, von)
+        vds = limvds(vgs - vgd, vdso)
+    else:
+        vgd = fetlim(vgd, vgdo, von)
+        vds = -limvds(-(vgs - vgd), -vdso)
+        vgs = vgd + vds
+    # vgs and vds are rebuilt through vgd, so an unlimited value can differ from `raw` by round-off:
+    # call it limited only if it moved by more than that, and then keep the exact raw value.
+    changed = abs(vgs - raw[0]) > 1e-12 or abs(vds - raw[1]) > 1e-12
+    return ((vgs, vds, vbs) if changed else raw), changed
+
+
 def _expand(circuit: Circuit) -> Circuit:
     """Give each diode with series resistance RS > 0 a hidden internal node: the resistor
     runs anode -> "<name>#int" and the junction itself runs "<name>#int" -> cathode.
@@ -70,20 +135,32 @@ def _expand(circuit: Circuit) -> Circuit:
     return replace(circuit, elements=out)
 
 
-def _newton(A_lin, b_lin, idx, n, diodes, names, x_start, gshunt, max_iter, reltol, abstol, vntol):
-    """Plain Newton from x_start. Returns (x, iterations) or raises ConvergenceError."""
+def _newton(A_lin, b_lin, idx, n, devices, names, x_start, gshunt, max_iter, reltol, abstol, vntol):
+    """Plain Newton from x_start over the nonlinear `devices` (diodes and MOSFETs).
+    Returns (x, iterations) or raises ConvergenceError."""
     size = len(b_lin)
+    diodes = [d for d in devices if isinstance(d, Diode)]
+    mosfets = [d for d in devices if isinstance(d, Mosfet)]
     pa = [idx.get(d.anode) for d in diodes]
     pc = [idx.get(d.cathode) for d in diodes]
     nvt = [d.model.N * VT for d in diodes]
     vcrit = [v * math.log(v / (math.sqrt(2) * d.model.IS)) for v, d in zip(nvt, diodes)]
     abs_floor = np.array([vntol] * n + [abstol] * (size - n))
+    pm = [[idx.get(node) for node in (m.drain, m.gate, m.source, m.bulk)] for m in mosfets]
 
     def vj(x, k):  # junction voltage of diode k at x
         return (x[pa[k]] if pa[k] is not None else 0.0) - (x[pc[k]] if pc[k] is not None else 0.0)
 
+    def vnode(x, p):
+        return x[p] if p is not None else 0.0
+
+    def mos_v(x, k):  # actual (vgs, vds, vbs) of MOSFET k at x
+        vd, vg, vs, vb = (vnode(x, p) for p in pm[k])
+        return vg - vs, vd - vs, vb - vs
+
     x = x_start.copy()
     vd_used = [vj(x, k) for k in range(len(diodes))]  # voltage each junction was last linearised at
+    mv_used = [tuple(mosfets[k].model.sign * v for v in mos_v(x, k)) for k in range(len(mosfets))]  # NMOS frame
     worst, worst_dx = names[0], 0.0
     for it in range(1, max_iter + 1):
         A, b = A_lin.copy(), b_lin.copy()
@@ -94,6 +171,15 @@ def _newton(A_lin, b_lin, idx, n, diodes, names, x_start, gshunt, max_iter, relt
             vd_used[k], lim = pnjlim(vj(x, k), vd_used[k], nvt[k], vcrit[k])
             limited |= lim
             lin.append(stamp_diode(A, b, idx, d, vd_used[k]))
+        mlin = []
+        for k, m in enumerate(mosfets):
+            t = m.model.sign
+            raw = tuple(t * v for v in mos_v(x, k))
+            _, vdso, vbso = mv_used[k]
+            von = mos_threshold(m.model, vbso - vdso if vdso < 0 else vbso)  # threshold at the effective bulk bias
+            mv_used[k], lim = limit_mos(raw, mv_used[k], von)
+            limited |= lim
+            mlin.append(stamp_mosfet(A, b, idx, m, *(t * v for v in mv_used[k])))
         try:
             x_new = np.linalg.solve(A, b)
         except np.linalg.LinAlgError as err:
@@ -108,6 +194,15 @@ def _newton(A_lin, b_lin, idx, n, diodes, names, x_start, gshunt, max_iter, relt
             g, ieq = lin[k]
             i_lin = g * vj(x_new, k) + ieq
             i_true = diode_iv(d.model, vj(x_new, k))[0]
+            if abs(i_lin - i_true) > reltol * max(abs(i_lin), abs(i_true)) + abstol:
+                ok = False
+        for k, m in enumerate(mosfets):  # same residual for the channel current, in the stamped direction
+            reverse, gm, gds, gmbs, ieq = mlin[k]
+            vgs, vds, vbs = mos_v(x_new, k)
+            if reverse:
+                vgs, vds, vbs = vgs - vds, -vds, vbs - vds
+            i_lin = gm * vgs + gds * vds + gmbs * vbs + ieq
+            i_true = mos_current(m, *mos_v(x_new, k)) * (-1 if reverse else 1)
             if abs(i_lin - i_true) > reltol * max(abs(i_lin), abs(i_true)) + abstol:
                 ok = False
         x = x_new
@@ -139,7 +234,7 @@ def solve_nonlinear(circuit: Circuit, t: float | None = None, x0: np.ndarray | N
     n = len(idx)
     A_lin, b_lin = build(ex, None, t, nonlinear_ok=True)
     names = list(idx) + [f"i({e.name})" for e in ex.branch_elements()]
-    args = (A_lin, b_lin, idx, n, ex.diodes(), names)
+    args = (A_lin, b_lin, idx, n, ex.nonlinear(), names)
     tol = (max_iter, reltol, abstol, vntol)
     start = np.zeros(len(b_lin)) if x0 is None else np.asarray(x0, dtype=float)
     try:

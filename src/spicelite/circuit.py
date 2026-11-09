@@ -25,8 +25,14 @@ class SingularCircuitError(Exception):
     """The circuit has no unique solution (floating node, voltage-source loop)."""
 
 
+class OpenLoopWarning(UserWarning):
+    """A high-gain controlled source (an op-amp) has no feedback path, so its output is just
+    gain times the differential input."""
+
+
 @dataclass
 class Resistor:
+    """Resistor between n1 and n2; value in ohms."""
     name: str
     n1: str
     n2: str
@@ -35,6 +41,7 @@ class Resistor:
 
 @dataclass
 class Capacitor:
+    """Capacitor between n1 and n2; value in farads (open at DC)."""
     name: str
     n1: str
     n2: str
@@ -43,6 +50,7 @@ class Capacitor:
 
 @dataclass
 class Inductor:
+    """Inductor between n1 and n2; value in henries (a 0 V source at DC, adds a branch current)."""
     name: str
     n1: str
     n2: str
@@ -68,6 +76,17 @@ class Pulse:
         if self.per <= 0 or self.per < self.tr + self.pw + self.tf:
             raise ValueError("PULSE period must be positive and at least tr + pw + tf")
 
+    def breakpoints(self, tstop: float) -> list[float]:
+        """Times in (0, tstop] where the waveform has a corner: the start and end of every edge."""
+        if tstop / self.per > 100_000:
+            raise ValueError(f"PULSE period {self.per:g} s gives more than 100000 periods in {tstop:g} s")
+        out, k = [], 0
+        while self.td + k * self.per < tstop:
+            base = self.td + k * self.per
+            out += [base, base + self.tr, base + self.tr + self.pw, base + self.tr + self.pw + self.tf]
+            k += 1
+        return [t for t in out if 0 < t <= tstop]
+
     def value(self, t: float) -> float:
         t -= self.td
         if t <= 0:
@@ -92,6 +111,10 @@ class Sin:
     td: float = 0.0
     theta: float = 0.0
 
+    def breakpoints(self, tstop: float) -> list[float]:
+        """The one corner of a SIN source: where it starts, at td."""
+        return [self.td] if 0 < self.td <= tstop else []
+
     def __post_init__(self) -> None:
         if self.freq <= 0:
             raise ValueError(f"SIN frequency must be positive, got {self.freq}")
@@ -107,6 +130,7 @@ class Sin:
 
 @dataclass
 class VoltageSource:
+    """Independent voltage source n1(+) to n2(-): DC value, AC phasor and optional transient waveform."""
     name: str
     n_plus: str
     n_minus: str
@@ -158,7 +182,107 @@ class Diode:
     model: DiodeModel | None = field(default=None, compare=False, repr=False)
 
 
-Element = Resistor | Capacitor | Inductor | VoltageSource | CurrentSource | Diode
+@dataclass
+class VCVS:
+    """`E name n+ n- nc+ nc- gain`: v(n+) - v(n-) = gain (v(nc+) - v(nc-)). Has a branch current."""
+
+    name: str
+    n_plus: str
+    n_minus: str
+    nc_plus: str
+    nc_minus: str
+    gain: float
+
+
+@dataclass
+class VCCS:
+    """`G name n+ n- nc+ nc- gm`: a current gm (v(nc+) - v(nc-)) flows n+ -> through the source -> n-."""
+
+    name: str
+    n_plus: str
+    n_minus: str
+    nc_plus: str
+    nc_minus: str
+    gm: float
+
+
+@dataclass
+class CCCS:
+    """`F name n+ n- Vsense gain`: a current gain * i(Vsense) flows n+ -> through the source -> n-.
+    i(Vsense) is the sense source's branch current: flowing into its + terminal, through it."""
+
+    name: str
+    n_plus: str
+    n_minus: str
+    sense: str
+    gain: float
+
+
+@dataclass
+class CCVS:
+    """`H name n+ n- Vsense rm`: v(n+) - v(n-) = rm * i(Vsense). Has a branch current."""
+
+    name: str
+    n_plus: str
+    n_minus: str
+    sense: str
+    rm: float
+
+
+@dataclass
+class MosModel:
+    """`.model name NMOS|PMOS (LEVEL=1 VTO=.. KP=.. LAMBDA=.. GAMMA=.. PHI=..)`, Shichman-Hodges.
+    Defaults are ngspice's: VTO 0 V, KP 2e-5 A/V^2, LAMBDA 0 1/V, GAMMA 0 sqrt(V), PHI 0.6 V.
+    VTO is written with its natural sign (negative for an enhancement PMOS), as in ngspice."""
+
+    name: str
+    kind: str  # "nmos" or "pmos"
+    VTO: float = 0.0
+    KP: float = 2e-5
+    LAMBDA: float = 0.0
+    GAMMA: float = 0.0
+    PHI: float = 0.6
+
+    def __post_init__(self) -> None:
+        if self.KP <= 0 or self.PHI <= 0 or self.GAMMA < 0 or self.LAMBDA < 0:
+            raise ValueError("MOS model needs KP > 0, PHI > 0, GAMMA >= 0 and LAMBDA >= 0")
+
+    @property
+    def sign(self) -> int:
+        """+1 for NMOS, -1 for PMOS: a PMOS is an NMOS with every voltage and current negated."""
+        return 1 if self.kind == "nmos" else -1
+
+
+# ngspice's default channel width and length (.options defw / defl), used when W or L is omitted
+DEFAULT_W = DEFAULT_L = 1e-4
+
+
+@dataclass
+class Mosfet:
+    """Level-1 MOSFET. `model` is filled in by the parser. beta = KP W / L."""
+
+    name: str
+    drain: str
+    gate: str
+    source: str
+    bulk: str
+    model_name: str
+    W: float = DEFAULT_W
+    L: float = DEFAULT_L
+    model: MosModel | None = field(default=None, compare=False, repr=False)
+
+
+Element = (Resistor | Capacitor | Inductor | VoltageSource | CurrentSource | Diode | Mosfet
+           | VCVS | VCCS | CCCS | CCVS)
+
+OPAMP_GAIN = 1e6  # default open-loop gain of the op-amp model
+
+
+def opamp(name: str, out: str, in_plus: str, in_minus: str, gain: float = OPAMP_GAIN) -> VCVS:
+    """An op-amp is a high-gain VCVS: v(out) = gain (v(in+) - v(in-)). It reuses the VCVS stamp
+    instead of a new element, and the finite gain makes the finite-gain error of a closed loop
+    visible. In a netlist write it as `E1 out 0 in+ in- 1e6`."""
+    return VCVS(name.lower(), out, "0", in_plus, in_minus, gain)
 
 
 @dataclass
@@ -236,14 +360,16 @@ class ConvergenceError(Exception):
 
 @dataclass
 class Circuit:
+    """A parsed netlist: elements plus the analysis directives that were present."""
     title: str = ""
     elements: list[Element] = field(default_factory=list)
     op: bool = False  # a `.op` directive was present
     ac: AcSweep | None = None  # the `.ac` directive, if any
     tran: TranSpec | None = None  # the `.tran` directive, if any
     method: str = "trap"  # `.options method=trap|be`: integration method for .tran
+    step_control: str = "fixed"  # `.options step=fixed|adaptive`: how .tran chooses its time step
     dc: DcSweep | None = None  # the `.dc` directive, if any
-    models: dict[str, DiodeModel] = field(default_factory=dict)  # `.model` cards by name
+    models: dict[str, DiodeModel | MosModel] = field(default_factory=dict)  # `.model` cards by name
     ic: dict[str, float] = field(default_factory=dict)  # `.ic v(node)=volts` initial conditions (UIC only)
 
     def node_index(self) -> dict[str, int]:
@@ -264,19 +390,33 @@ class Circuit:
     def diodes(self) -> list[Diode]:
         return [e for e in self.elements if isinstance(e, Diode)]
 
+    def mosfets(self) -> list[Mosfet]:
+        return [e for e in self.elements if isinstance(e, Mosfet)]
+
+    def nonlinear(self) -> list[Diode | Mosfet]:
+        """Elements that need Newton-Raphson (a linear circuit has none)."""
+        return [e for e in self.elements if isinstance(e, (Diode, Mosfet))]
+
     def branch_elements(self) -> list[VoltageSource | Inductor]:
         """Elements that carry an extra MNA unknown (their branch current), in netlist order.
 
-        Branch k owns unknown (and row) n_nodes + k. Voltage sources and inductors both
-        need one: neither current can be written as a conductance times a voltage
-        (a voltage source fixes v; an inductor's admittance 1/(s*L) is infinite at DC).
+        Branch k owns unknown (and row) n_nodes + k. Voltage sources, inductors, and the two
+        voltage-output controlled sources (E, H) need one: none of their currents can be written
+        as a conductance times a voltage (a voltage source fixes v; an inductor's admittance
+        1/(s*L) is infinite at DC). G and F are current outputs and need none.
         """
-        return [e for e in self.elements if isinstance(e, (VoltageSource, Inductor))]
+        return [e for e in self.elements if isinstance(e, (VoltageSource, Inductor, VCVS, CCVS))]
 
 
-def element_nodes(e: Element) -> tuple[str, str]:
-    if isinstance(e, (VoltageSource, CurrentSource)):
+def element_nodes(e: Element) -> tuple[str, ...]:
+    """Every node the element touches. The first two are its main terminals (the pair it
+    conducts or drives); an E or G also lists its two control nodes after them."""
+    if isinstance(e, (VCVS, VCCS)):
+        return e.n_plus, e.n_minus, e.nc_plus, e.nc_minus
+    if isinstance(e, (VoltageSource, CurrentSource, CCCS, CCVS)):
         return e.n_plus, e.n_minus
     if isinstance(e, Diode):
         return e.anode, e.cathode
+    if isinstance(e, Mosfet):  # channel terminals first, then the controlling gate and bulk
+        return e.drain, e.source, e.gate, e.bulk
     return e.n1, e.n2
