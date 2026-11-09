@@ -1,0 +1,6 @@
+signal,value
+v(in),1.0
+v(x),5.0
+v(out),5.0
+i(v1),0.0
+i(e1),0.0

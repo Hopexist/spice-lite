@@ -80,3 +80,69 @@ def test_m7_golden_file_covers_every_pre_m8_m9_example():
         "nmos_iv.cir", "cmos_inverter_vtc.cir", "cmos_inverter_tran.cir", "nmos_common_source.cir",
         "rc_ic_discharge.cir", "rlc_ring_adaptive.cir", "stiff_adaptive.cir"}
     assert set(GOLDEN_M7) == pre_m8
+
+
+# ---- full-precision golden outputs (refactor safety net) ------------------------------------
+# tests/golden_refactor/ holds the CLI's own `--csv` output (every value as repr(float)) for every example,
+# captured before the stamping refactor. Unlike the summaries above, every sample of every signal is compared.
+GOLDEN_FULL = HERE / "golden_refactor"
+EXAMPLES = sorted((HERE.parent / "examples").glob("*.cir"))
+
+
+def _csv(path: Path) -> tuple[list[str], np.ndarray]:
+    """Header plus the numeric columns; .op tables have a text column of signal names, kept in the header list."""
+    rows = [line.split(",") for line in path.read_text().splitlines()]
+    text = [r[0] for r in rows[1:]] if rows[1:] and not _is_num(rows[1][0]) else []
+    body = [r[1:] if text else r for r in rows[1:]]
+    return rows[0] + text, np.array([[float(v) for v in r] for r in body])
+
+
+def _is_num(v: str) -> bool:
+    try:
+        float(v)
+        return True
+    except ValueError:
+        return False
+
+
+def _run_cli(example: Path, out: Path, solver: str) -> None:
+    from spicelite.cli import run_netlist
+    run_netlist(parse(example.read_text()), example.stem, solver, True, out, None)
+
+
+def _outputs(folder: Path, stem: str) -> list[Path]:
+    """<stem>_<analysis>.csv only: diode_clamp must not pick up diode_clamp_tran's files."""
+    return sorted(p for p in folder.glob("*.csv") if p.name.rsplit("_", 1)[0] == stem)
+
+
+def _compare_full(example: Path, out: Path, golden_dir: Path = GOLDEN_FULL) -> None:
+    golden = _outputs(golden_dir, example.stem)
+    produced = _outputs(out, example.stem)
+    assert [p.name for p in produced] == [g.name for g in golden], "analyses changed"
+    for g in golden:
+        want_h, want = _csv(g)
+        got_h, got = _csv(out / g.name)
+        assert got_h == want_h, f"{g.name}: columns changed"
+        # 1e-12 relative: a refactor that only reorganises stamping must reproduce the numbers to rounding.
+        # The 1e-18 absolute floor only matters for samples that are exactly zero or at the 1e-20 level.
+        np.testing.assert_allclose(got, want, rtol=1e-12, atol=1e-18, err_msg=g.name)
+
+
+@pytest.mark.parametrize("example", EXAMPLES, ids=lambda p: p.stem)
+def test_every_example_matches_its_full_precision_golden_output(example, tmp_path):
+    _run_cli(example, tmp_path, "auto")
+    _compare_full(example, tmp_path)
+
+
+LINEAR = [p for p in EXAMPLES if not parse(p.read_text()).nonlinear()]
+
+
+@pytest.mark.parametrize("example", LINEAR, ids=lambda p: p.stem)
+def test_sparse_solver_reproduces_the_golden_output_of_every_linear_example(example, tmp_path):
+    # sparse has its own goldens: a different LU rounds differently from dense at the 1e-15 level
+    _run_cli(example, tmp_path, "sparse")
+    _compare_full(example, tmp_path, GOLDEN_FULL / "sparse")
+
+
+def test_full_golden_set_covers_every_example():
+    assert {p.name.rsplit("_", 1)[0] for p in GOLDEN_FULL.glob("*.csv")} == {p.stem for p in EXAMPLES}

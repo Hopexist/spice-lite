@@ -4,8 +4,9 @@
 
 An N-section ladder is  V1 - R - R - ... - R  with a capacitor from every internal node to ground,
 so it has N + 1 nodes + 1 branch unknown and a tridiagonal-ish matrix (the best case for sparse).
-Two workloads: `.op` (one linear solve) and `.tran` (100 trapezoidal steps: one factorisation,
-then 100 back-substitutions). Times are best-of-`repeat` wall-clock seconds and include matrix
+Three workloads: `.op` (one linear solve), `.tran` (100 fixed trapezoidal steps: one factorisation,
+then 100 back-substitutions) and adaptive `.tran` (the step controller: several step sizes, one cached
+factorisation per size). Times are best-of-`repeat` wall-clock seconds and include matrix
 assembly, because assembly is part of what the sparse path changes.
 """
 from __future__ import annotations
@@ -41,14 +42,16 @@ def main() -> None:
     ap.add_argument("--dense-max", type=int, default=10000, help="skip dense above this many sections")
     ap.add_argument("--repeat", type=int, default=3)
     a = ap.parse_args()
-    print("| sections | unknowns | .op dense | .op sparse | speed-up | .tran dense | .tran sparse | speed-up |")
-    print("|---:|---:|---:|---:|---:|---:|---:|---:|")
+    print("| sections | unknowns | .op dense | .op sparse | speed-up | .tran dense | .tran sparse | speed-up"
+          " | adaptive dense | adaptive sparse | speed-up |")
+    print("|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for n in a.sizes:
         c = parse(ladder(n))
         size = len(c.node_index()) + len(c.branch_elements())
         reps = 1 if n >= 10000 else a.repeat  # a 10k dense solve is slow: once is enough
         row = []
-        for run in (lambda s: op(c, solver=s), lambda s: tran(c, solver=s)):
+        for run in (lambda s: op(c, solver=s), lambda s: tran(c, solver=s),
+                    lambda s: tran(c, solver=s, adaptive=True)):
             d = best(lambda: run("dense"), reps) if n <= a.dense_max else None
             s = best(lambda: run("sparse"), reps)
             row += [f"{d:.4f} s" if d is not None else "skipped", f"{s:.4f} s",
