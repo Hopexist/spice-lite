@@ -1,0 +1,27 @@
+/* Direction C - Night bench. A dark workbench: blue-black, copper and amber, airy spacing, soft corners; the selected
+   tab and the Run button carry a resistor colour-code band. Type: Geist (UI) + Geist Mono (netlist and values only). */
+:root, :root[data-theme] {
+  --sans: "Geist Sans", system-ui, sans-serif; --mono: "Geist Mono", ui-monospace, monospace;
+  --bg: #0a0d12; --surface: #10151c; --raised: #161d26; --ink: #e7ebee; --muted: #94a0ac; --line: #26303c; --grid: #18202a;
+  --accent: #e3925b; --accent-ink: #1b0f06; --run: #ffb547; --run-ink: #1f1300; --active-line: #131a22; --selection: #3a2a1d;
+  --err: #ff9b8f; --err-bg: #2a1515; --warn: #f3c969; --warn-bg: #282011;
+  --c1: #56b4e9; --c2: #e69f00; --c3: #2fd6a0; --c4: #f0e442; --c5: #e28fc0; --c6: #ff7a3d; --c7: #7aa6ff; --c8: #e7ebee;
+  --syn-title: #f3c969; --syn-comment: #7c8995; --syn-dot: #e3925b; --syn-element: #f29ac9; --syn-number: #ffb067; --syn-atom: #9be37f; --syn-prop: #a9a4ff;
+  --shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 18px 40px -24px rgba(0,0,0,0.9); color-scheme: dark;
+}
+body { background-image: none; font-size: 15px; }
+.bar { background: transparent; border-bottom: 1px solid var(--line); padding-block: 16px; backdrop-filter: none; }
+.name { font: 600 22px/1 var(--sans); letter-spacing: -0.03em; } .name .dot { color: var(--accent); }
+.logo-bg { fill: #161d26; } .logo-line { stroke: #e3925b; }
+.field span, .pane-head h2 { font: 500 12px/1 var(--sans); letter-spacing: 0; text-transform: none; color: var(--muted); }
+.btn, select, .seg { border-radius: 10px; } .pane { border-radius: 16px; } .tablewrap, .msg, .refinfo { border-radius: 10px; }
+.split { gap: 20px; padding: 20px clamp(12px, 3vw, 32px); }
+.btn.primary { position: relative; overflow: hidden; }
+.btn.primary::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 3px; height: 2px; border-radius: 2px;
+  background: linear-gradient(90deg, #7a4a1e 0 25%, #1c1c1c 25% 50%, #c7322b 50% 75%, #d4a937 75%); }
+.tabs { border-bottom: 1px solid var(--line); gap: 8px; }
+.tab { font: 500 13.5px var(--sans); border: none; border-radius: 0; padding: 10px 6px; }
+.tab[aria-selected="true"] { border: none; margin-bottom: 0; box-shadow: none;
+  background: linear-gradient(90deg, #7a4a1e 0 25%, #1c1c1c 25% 50%, #c7322b 50% 75%, #d4a937 75%) bottom / 100% 3px no-repeat; }
+figure.plot figcaption { font: 500 13px var(--sans); text-transform: none; letter-spacing: 0; color: var(--ink); }
+.foot { font-family: var(--sans); }

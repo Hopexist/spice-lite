@@ -6,7 +6,11 @@
     <title>spice-lite · circuit simulator in your browser</title>
     <meta name="description" content="Write a SPICE netlist, press Run, and see DC, AC and transient results. The simulator is Python running in your browser; nothing is uploaded." />
     <meta name="color-scheme" content="light dark" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230c1311'/%3E%3Cpath d='M3 20h6l3-10 5 14 3-9h9' fill='none' stroke='%235eead4' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0e1013" media="(prefers-color-scheme: dark)" />
     <script>
       // apply a stored theme before first paint so there is no flash
       try { var t = localStorage.getItem("spicelite-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
@@ -16,7 +20,8 @@
     <a class="skip" href="#editor">Skip to the netlist editor</a>
     <header class="bar">
       <div class="brand">
-        <svg class="logo" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true"><rect width="32" height="32" rx="7" class="logo-bg" /><path d="M3 20h6l3-10 5 14 3-9h9" fill="none" class="logo-line" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        <!-- the mark: Figure 1, an RC step response on its axes (public/brand/mark.svg) -->
+        <svg class="logo" viewBox="0 0 100 100" width="30" height="30" aria-hidden="true"><rect class="axis" x="12" y="10" width="7" height="78" /><rect class="axis" x="12" y="81" width="78" height="7" /><path class="curve" d="M19 81 C 34 38, 52 23, 90 20" fill="none" stroke-width="9" stroke-linecap="round" /></svg>
         <div>
           <h1 class="name">spice<span class="dot">·</span>lite</h1>
           <p class="tag">a circuit simulator that runs in your browser</p>
@@ -29,7 +34,22 @@
         <button id="theme" class="btn" type="button" aria-label="Color theme: follow system"><span id="theme-label">Auto</span></button>
       </div>
     </header>
-    <main class="split">
+    <section class="hero" aria-labelledby="hero-h">
+      <div class="hero-copy">
+        <h2 id="hero-h" class="hero-h">A SPICE circuit simulator that runs in your browser.</h2>
+        <p class="hero-sub">Write a netlist, press Run, read the plots. DC, AC and transient analysis with diodes and MOSFETs, checked against ngspice.</p>
+        <p class="hero-fact">Run in your browser, no install: Python, NumPy and SciPy run locally in WebAssembly, and nothing you type is uploaded.</p>
+        <div class="hero-actions">
+          <button id="try" class="btn primary" type="button">Try it: run an RC step</button>
+          <a class="btn" href="#elements">Supported elements</a>
+        </div>
+      </div>
+      <div class="hero-demo">
+        <div id="demo" class="demo"></div>
+        <button id="demo-pause" class="btn small" type="button" aria-pressed="false">Pause demo</button>
+      </div>
+    </section>
+    <main class="split" id="app">
       <section class="pane editor-pane" aria-labelledby="editor-h">
         <div class="pane-head">
           <h2 id="editor-h">Netlist</h2>
@@ -47,6 +67,49 @@
         <div id="results"></div>
       </section>
     </main>
+    <section class="caps" aria-labelledby="caps-h">
+      <h2 id="caps-h" class="section-h">What it does</h2>
+      <div class="bento">
+        <article class="cap cap-wide">
+          <svg class="cap-fig" viewBox="0 0 120 48" aria-hidden="true"><path class="c-a" d="M4 44C30 44 34 6 60 6s30 38 56 38"/><path class="c-b" d="M4 44C30 44 34 6 60 6s30 38 56 38"/></svg>
+          <h3>Checked against ngspice</h3>
+          <p>809 Python tests. Every bundled example has a committed ngspice 41 reference. Linear <code>.op</code> and <code>.dc</code> agree to 1e-9 relative, <code>.ac</code> to 1e-6, and each transient to a tolerance written next to its test.</p>
+        </article>
+        <article class="cap">
+          <svg class="cap-fig" viewBox="0 0 120 48" aria-hidden="true"><path d="M4 44L116 8M4 44L116 24M4 44L116 38"/></svg>
+          <h3>DC</h3><p><code>.op</code> operating points and <code>.dc</code> sweeps of any V or I source.</p>
+        </article>
+        <article class="cap">
+          <svg class="cap-fig" viewBox="0 0 120 48" aria-hidden="true"><path d="M4 10H56C70 10 74 14 84 22L116 44"/></svg>
+          <h3>AC</h3><p><code>.ac dec | oct | lin</code>: complex MNA, magnitude in dB and phase in degrees.</p>
+        </article>
+        <article class="cap">
+          <svg class="cap-fig" viewBox="0 0 120 48" aria-hidden="true"><path d="M4 44H20V8H64V44H116" class="c-thin"/><path d="M20 44C30 14 42 10 64 9C76 30 90 42 116 44"/></svg>
+          <h3>Transient</h3><p>Backward Euler or trapezoidal, PULSE and SIN sources, <code>.ic</code> with <code>uic</code>.</p>
+        </article>
+        <article class="cap">
+          <svg class="cap-fig" viewBox="0 0 120 48" aria-hidden="true"><path d="M4 44V8M4 44H116" class="c-thin"/><path d="M8 44v-30M10 44v-24M14 44v-14M22 44v-6M40 44v-3M70 44v-3M100 44v-3"/></svg>
+          <h3>Adaptive steps</h3><p>Local-error control places 191 steps where a fixed step needs 5,000 and is still less accurate (<code>stiff_adaptive</code>).</p>
+        </article>
+        <article class="cap">
+          <svg class="cap-fig" viewBox="0 0 120 48" aria-hidden="true"><path d="M4 44H70C84 44 88 40 96 4"/></svg>
+          <h3>Nonlinear</h3><p>Diodes and level-1 MOSFETs with overlap capacitances, solved by Newton-Raphson with junction limiting and gmin stepping.</p>
+        </article>
+        <article class="cap">
+          <svg class="cap-fig" viewBox="0 0 120 48" aria-hidden="true"><path d="M40 6L84 24L40 42Z"/><path d="M4 16H40M4 32H40M84 24H116"/></svg>
+          <h3>Controlled sources</h3><p><code>E</code>, <code>G</code>, <code>F</code> and <code>H</code>. An op-amp is an <code>E</code> with a gain of 1e6.</p>
+        </article>
+        <article class="cap">
+          <svg class="cap-fig" viewBox="0 0 120 48" aria-hidden="true"><rect x="34" y="6" width="52" height="36" rx="2"/><path d="M34 16H20M34 32H20M86 16h14M86 32h14M46 24h28"/></svg>
+          <h3>Runs in WebAssembly</h3><p>Pyodide (Python 3.14) in a Web Worker, so the page never freezes. About 24 MB on the first visit, cached after.</p>
+        </article>
+      </div>
+    </section>
+    <section class="elements" id="elements" aria-labelledby="elements-h">
+      <h2 id="elements-h" class="section-h">Supported elements</h2>
+      <p class="section-sub">One sheet per element the netlist parser accepts. Values in SI units; anything the parser rejects is an error with its line number.</p>
+      <div id="sheets" class="sheets"></div>
+    </section>
     <footer class="foot">
       <span id="runtime">Python runtime not loaded yet</span>
       <span class="sep" aria-hidden="true">·</span>

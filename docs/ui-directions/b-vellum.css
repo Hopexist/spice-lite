@@ -1,0 +1,24 @@
+/* Direction B - Drafting vellum. A drawing sheet: warm vellum, graphite line work, one vermilion, square corners,
+   the header set as a title block. Type: Public Sans (UI) + IBM Plex Mono (netlist and values only). */
+:root, :root[data-theme] {
+  --sans: "Public Sans", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --bg: #efece3; --surface: #f7f5ee; --raised: #fbfaf5; --ink: #23272a; --muted: #5d5d55; --line: #8f8c82; --grid: #ddd8ca;
+  --accent: #2f5573; --accent-ink: #fff; --run: #c8401c; --run-ink: #fff; --active-line: #efebdf; --selection: #d6dde3;
+  --shadow: none; color-scheme: light;
+}
+body { background-image: none; }
+.bar { background: var(--surface); border: 1.5px solid var(--ink); margin: 14px clamp(12px, 3vw, 28px) 0; padding: 0; gap: 0; backdrop-filter: none; align-items: stretch; }
+.brand { padding: 10px 16px; border-right: 1.5px solid var(--ink); }
+.controls { padding: 8px 12px; gap: 8px; }
+.name { font: 700 20px/1 var(--sans); letter-spacing: 0.04em; text-transform: uppercase; } .name .dot { color: var(--run); }
+.tag { font-size: 11.5px; letter-spacing: 0.04em; text-transform: uppercase; }
+.logo-bg { fill: #23272a; } .logo-line { stroke: #efece3; }
+.field span, .pane-head h2 { font: 600 10.5px/1 var(--sans); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.btn, select, .seg, .tablewrap, .msg, .refinfo, .pane { border-radius: 0; }
+.btn { border-color: var(--ink); } .btn.primary { box-shadow: none; }
+.pane { border: 1.5px solid var(--ink); box-shadow: none; }
+.pane-head { border-bottom: 1px solid var(--ink); }
+.tab { font: 600 12px var(--sans); letter-spacing: 0.08em; text-transform: uppercase; border-radius: 0; }
+.tab[aria-selected="true"] { box-shadow: inset 0 3px 0 var(--run); border-color: var(--ink); }
+figure.plot figcaption { font: 600 10.5px var(--sans); letter-spacing: 0.14em; }
+.foot { font-family: var(--sans); text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; }

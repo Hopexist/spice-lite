@@ -1,0 +1,30 @@
+/* Direction A - Datasheet. A semiconductor datasheet: white page, black hairlines, one signal blue, dense tables,
+   numbered figures. Type: Archivo (UI) + JetBrains Mono (netlist and values only). */
+:root, :root[data-theme] {
+  --sans: "Archivo", system-ui, sans-serif; --mono: "JetBrains Mono", ui-monospace, monospace;
+  --bg: #ffffff; --surface: #ffffff; --raised: #ffffff; --ink: #111316; --muted: #555b63; --line: #b9bec6; --grid: #e9ebee;
+  --accent: #0b4f9c; --accent-ink: #fff; --run: #0b4f9c; --run-ink: #fff; --active-line: #f3f5f8; --selection: #cfe0f5;
+  --shadow: none; color-scheme: light;
+}
+body { background-image: none; font-size: 14px; }
+.bar { background: #fff; border-bottom: 2px solid var(--ink); padding-block: 10px; backdrop-filter: none; }
+.name { font: 700 21px/1 var(--sans); letter-spacing: -0.01em; } .name .dot { color: var(--accent); }
+.tag { font-size: 12px; }
+.logo-bg { fill: #111316; } .logo-line { stroke: #fff; }
+.field span, .pane-head h2 { font: 700 12px/1 var(--sans); letter-spacing: 0.01em; text-transform: none; color: var(--ink); }
+.btn, select, .seg, .tablewrap, .msg, .refinfo { border-radius: 2px; }
+.btn.primary { box-shadow: none; } .btn.primary kbd { border-radius: 2px; }
+.split { gap: 0; padding: 0; }
+.pane { border: none; border-radius: 0; box-shadow: none; }
+.editor-pane { border-right: 1px solid var(--ink); }
+.pane-head { border-bottom: 1px solid var(--ink); padding: 9px 16px 8px; }
+.tabs { border-bottom: 1px solid var(--ink); gap: 18px; }
+.tab { padding: 8px 0; border: none; font: 600 13px var(--sans); border-radius: 0; }
+.tab[aria-selected="true"] { background: none; border: none; box-shadow: inset 0 -3px 0 var(--accent); margin-bottom: 0; }
+#results { counter-reset: fig; }
+figure.plot { counter-increment: fig; border-top: 1px solid var(--grid); padding-top: 8px; }
+figure.plot figcaption { font: 600 12.5px var(--sans); text-transform: none; letter-spacing: 0; color: var(--ink); }
+figure.plot figcaption::before { content: "Figure " counter(fig) ". "; font-weight: 700; }
+table.data th { background: #f2f3f5; font: 700 12px var(--sans); }
+table.data th, table.data td { padding: 4px 10px; }
+.foot { border-top: 1px solid var(--ink); padding-top: 8px; font-family: var(--sans); }

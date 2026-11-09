@@ -1,0 +1,80 @@
+{
+  "_comment": "One spec sheet per element letter the parser accepts (spicelite.parser.ELEMENT_LETTERS). tests/test_element_sheets.py fails if a letter is missing or unknown. Values and defaults come from spicelite/circuit.py; units are SI.",
+  "r": {
+    "name": "Resistor", "code": "R", "symbol": "resistor",
+    "syntax": "R<name> n1 n2 <resistance>",
+    "params": [["resistance", "ohm", "> 0"]],
+    "stamp": "Conductance G = 1/R added between n1 and n2: +G on both diagonals, -G off the diagonal.",
+    "example": "R1 in out 1k"
+  },
+  "c": {
+    "name": "Capacitor", "code": "C", "symbol": "capacitor",
+    "syntax": "C<name> n1 n2 <capacitance>",
+    "params": [["capacitance", "F", "> 0"]],
+    "stamp": "Admittance sC: open at DC, jωC in .ac, a companion conductance C/h (BE) or 2C/h (trap) plus a history current in .tran.",
+    "example": "C1 out 0 1u"
+  },
+  "l": {
+    "name": "Inductor", "code": "L", "symbol": "inductor",
+    "syntax": "L<name> n1 n2 <inductance>",
+    "params": [["inductance", "H", "> 0"]],
+    "stamp": "An extra branch-current unknown with v(n1) - v(n2) - sL i = 0: a short at DC, jωL in .ac, a companion resistance in .tran.",
+    "example": "L1 a b 10m"
+  },
+  "v": {
+    "name": "Voltage source", "code": "V", "symbol": "vsource",
+    "syntax": "V<name> n+ n- [DC] <v> [AC <mag> [<phase>]] [PULSE(v1 v2 td tr tf pw per) | SIN(vo va freq [td theta])]",
+    "params": [["DC value", "V", "0"], ["AC magnitude", "V", "0"], ["AC phase", "deg", "0"], ["PULSE / SIN", "V, s, Hz", "transient waveform"]],
+    "stamp": "An extra branch-current unknown and the row v(n+) - v(n-) = V; the current flows n+ through the source to n-.",
+    "example": "V1 in 0 DC 0 AC 1 PULSE(0 5 1n 1n 1n 5u 10u)"
+  },
+  "i": {
+    "name": "Current source", "code": "I", "symbol": "isource",
+    "syntax": "I<name> n+ n- [DC] <i> [AC <mag> [<phase>]] [PULSE(...) | SIN(...)]",
+    "params": [["DC value", "A", "0"], ["AC magnitude", "A", "0"], ["AC phase", "deg", "0"], ["PULSE / SIN", "A, s, Hz", "transient waveform"]],
+    "stamp": "Right-hand side only: I leaves n+ and enters n- (b[n+] -= I, b[n-] += I); no matrix entries.",
+    "example": "I1 0 a DC 1m"
+  },
+  "d": {
+    "name": "Diode", "code": "D", "symbol": "diode",
+    "syntax": "D<name> anode cathode <model>   with   .model <model> D(IS=.. N=.. RS=..)",
+    "params": [["IS", "A", "1e-14"], ["N", "-", "1"], ["RS", "ohm", "0"]],
+    "stamp": "Shockley i = IS (e^(v/N Vt) - 1), linearised by Newton each iteration into a conductance g = di/dv and a current Ieq; RS adds a hidden internal node.",
+    "example": "D1 a k dmod"
+  },
+  "m": {
+    "name": "MOSFET, level 1", "code": "M", "symbol": "nmos",
+    "syntax": "M<name> drain gate source bulk <model> [W=..] [L=..]   with   .model <model> NMOS|PMOS(LEVEL=1 VTO KP LAMBDA GAMMA PHI CGSO CGDO CGBO CBD CBS)",
+    "params": [["W, L", "m", "100u"], ["VTO", "V", "0"], ["KP", "A/V²", "2e-5"], ["LAMBDA", "1/V", "0"], ["GAMMA", "√V", "0"], ["PHI", "V", "0.6"], ["CGSO, CGDO", "F/m of W", "0"], ["CGBO", "F/m of L", "0"], ["CBD, CBS", "F", "0"]],
+    "stamp": "Shichman-Hodges drain current linearised by Newton into gm, gds and gmbs plus Ieq; the capacitances are added as hidden linear capacitors.",
+    "example": "M1 out in 0 0 nm W=20u L=2u"
+  },
+  "e": {
+    "name": "Voltage-controlled voltage source (VCVS)", "code": "E", "symbol": "vcvs",
+    "syntax": "E<name> n+ n- nc+ nc- <gain>",
+    "params": [["gain", "V/V", "required"]],
+    "stamp": "An extra branch-current unknown and the row v(n+) - v(n-) - gain (v(nc+) - v(nc-)) = 0. An op-amp is an E with gain 1e6.",
+    "example": "E1 out 0 inp inn 1e6"
+  },
+  "g": {
+    "name": "Voltage-controlled current source (VCCS)", "code": "G", "symbol": "vccs",
+    "syntax": "G<name> n+ n- nc+ nc- <transconductance>",
+    "params": [["transconductance", "S", "required"]],
+    "stamp": "gm (v(nc+) - v(nc-)) flows n+ to n-: four matrix entries, no extra unknown.",
+    "example": "G1 out 0 in 0 2m"
+  },
+  "f": {
+    "name": "Current-controlled current source (CCCS)", "code": "F", "symbol": "cccs",
+    "syntax": "F<name> n+ n- <Vsense> <gain>",
+    "params": [["gain", "A/A", "required"], ["Vsense", "-", "a V source whose current is sensed"]],
+    "stamp": "gain times the branch current of Vsense flows n+ to n-: two entries in the Vsense current column.",
+    "example": "F1 out 0 Vs 10"
+  },
+  "h": {
+    "name": "Current-controlled voltage source (CCVS)", "code": "H", "symbol": "ccvs",
+    "syntax": "H<name> n+ n- <Vsense> <transresistance>",
+    "params": [["transresistance", "ohm", "required"], ["Vsense", "-", "a V source whose current is sensed"]],
+    "stamp": "An extra branch-current unknown and the row v(n+) - v(n-) - rm i(Vsense) = 0.",
+    "example": "H1 out 0 Vs 1k"
+  }
+}

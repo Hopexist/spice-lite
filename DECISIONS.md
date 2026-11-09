@@ -307,3 +307,158 @@ unchanged (goldens). A capacitor directly across a voltage source with uic is st
 
 ## D44: Report naming (refactor run)
 The web UI report moves to `REPORT_WEB.md`; `REPORT.md` stays the latest run, as with `REPORT_M5_M7.md` and `REPORT_M8_M9.md`.
+
+
+# UI polish run
+
+## D45: Tools evaluated (Phase 1)
+Every tool was cloned into the session scratchpad as read-only data (nothing executed). The README and every SKILL.md / rules file of the
+part actually followed was read in full before use; the rest of each repository was safety-scanned (network fetches, global installs,
+hooks, writes outside the repo, credentials). Installed skills go to this repository's `.claude/skills/` only, never `~/.claude`.
+
+| Tool | Verdict | Why |
+|---|---|---|
+| StageShow (benjitaylor/skills, MIT) | partly used | It is a skill whose kit is React + lucide-react; the brief forbids adding a framework. Its principles are followed by hand in the landing demo: 3-5 beats and a payoff, values that move instead of swapping, a poster frame that tells the story alone (shown under reduced motion), a loop that resets with a visible cause, real words only on the focal parts. Kit not installed. |
+| Impeccable (pbakaus, Apache-2.0) | partly used | Setup runs a launcher that downloads a self-contained binary on first run (a network-fetched executable), and an optional hook auto-runs a detector: not allowed. Used through its own documented "launcher unavailable" path: `craft-floor.md` (quality floor and refuse list), `mode-operate.md` (the app: the world lends type, palette, density and one signature move, never a costume of an instrument), `mode-persuade.md` (the landing section) and `animate.md`. Not installed. |
+| Dimensional Drawing (enesozturk, MIT) | used, installed | Pure instructions plus two example HTML sheets; no scripts in the drawing skill. Drives the element spec sheets (monochrome line, title block, coded values, numbered notes, `[TBD]` instead of invented values). The motion sub-skill (Playwright + ffmpeg film) is not needed and not installed. |
+| Oil UI (oil-oil, license not stated in the repo root) | partly used | Runs an update check (`check_update.sh`, network) and an upsell script, and its image generation spends paid credits: none of that is used. Its explicit-exploration method is followed by hand: three directions that share at most one of layout, typography, colour and key imagery; first screen only; compared side by side at 480 px and chosen with written reasons when unattended. Not installed. |
+| Emil Kowalski skills (MIT) | used, installed | `animate` and `review-animations` (with RECIPES.md and STANDARDS.md): pure instructions. They set the motion rules (frequency gate, named purpose, transform/opacity, strong ease-out curves, UI under 300 ms, reduced motion and hover gating shipped with every animation) and the Phase 6 motion review. The other 16 skills (Swift, Expo, mobile, gestures, Sonner, ...) do not apply to this stack and were not read. |
+| Taste Skill (Leonxlnx/taste-skill 2.5.1; the brief's "LeonxInx" spelling does not exist) | partly used | Its frontmatter registers a Claude Code Stop hook that runs `gate.mjs`, and its pipeline downloads photographs and icons: not installed. It targets company marketing sites; the "dials" the brief mentions are in older versions. Rules taken: no fade-in on every section or scroll-jacking, no violet, one button / card system, 44 px tap targets, nothing hidden under reduced motion, no invented figures, every control answers the pointer. Found on the second attempt (`gh search repos`). |
+| Brand Identity (fatihaydost, MIT) | partly used | The Python pipeline installs its own packages via uv and fetches Google Fonts, a full run costs ~0.9 M tokens (its README), and it stops for the user to pick. Its method is followed by hand: one mechanism that yields mark, type and palette; the reflex test against `ai-defaults.md` (no Inter, Fraunces, Space Grotesk/Sora, cream-terracotta, violet-in-tech); a mark drawn on a 100-unit grid from filled primitives and judged flat at 16 and 32 px; contrast measured, not asserted. Not installed. |
+| Awwwards MCP (INSANE0777/Awwwards) | skipped | Not configured in this session (the brief: use only if already configured), and the repository name does not resolve. Replaced by reading Linear, Falstad's circuit simulator and Wokwi (first-viewport layout, type and motion), via a fetch agent. |
+| Kokonut UI (MIT) | studied | React + Tailwind + Motion; not added. Pattern taken and rebuilt natively: a bento of capability tiles where each tile holds a small live diagram rather than an icon. |
+| Bklit UI (bklit/bklit-ui, MIT) | studied | React charts library; ui.bklit.com redirects to bklit.com (not the catalog); found on GitHub. Pattern taken: charts that draw their line in once on mount and a value that rolls to its new number. |
+| Manus.im | studied | Public site only, for composition: one centred line, an action directly under it, the product shown right below. No branding, copy, images or code taken. |
+
+## D46: Animation engine: none (CSS + Web Animations API), 0 kB
+- **Measured** (esbuild, minified, gzip -9, a bare `animate()` import): Motion `animate` 28.4 kB; Motion `motion/mini` 3.7 kB;
+  anime.js 4.5 `animate` 13.3 kB.
+- **Choice:** no library. Every planned motion (staged loading bar, tab change, plot reveal, number tickers, change highlight, error
+  entrance, button press, theme change, toast) is a CSS transition or keyframe, or one `element.animate()` call; the tickers are a short
+  `requestAnimationFrame` loop. Emil's rule "cheapest tool that works; don't install a motion library for a fade".
+- **Alternatives:** `motion/mini` (3.7 kB) if springs or interruptible sequencing are ever needed; anime.js costs more for features
+  (timelines, SVG morphing) this UI does not use.
+
+
+## D47: Design direction: A, Datasheet (Phase 2)
+Three directions were built as CSS overlays on the real app (`docs/ui-directions/*.css`, rendered by `web/scripts/directions.mjs`
+with their fonts embedded; nothing was forked). All three keep the working two-pane layout, so any two share only layout (Oil UI's rule:
+at most one of layout, typography, colour, key imagery). Compared side by side at 480 px (`docs/ui-directions/sheet.png`).
+
+| Direction | Type | Palette | Density | Signature move |
+|---|---|---|---|---|
+| **A Datasheet** | Archivo + JetBrains Mono | white, black ink, one signal blue | dense, hairlines, 2 px radius | plots numbered and captioned "Figure N." like a datasheet's characteristic curves |
+| B Drafting vellum | Public Sans + IBM Plex Mono | warm vellum, graphite, vermilion | medium, square, 1.5 px rules | the header set as a drawing title block |
+| C Night bench | Geist + Geist Mono | blue-black, copper, amber | airy, 12-16 px radius | a resistor colour-code band on the active tab and Run |
+
+Scorecard (1-5):
+
+| Criterion | A | B | C |
+|---|---|---|---|
+| Legibility of plots | 5: black hairlines on white, the most contrast for traces | 4: the vellum ground lowers trace contrast | 4: traces pop, the grid fades |
+| Contrast | 5 (ink 18.6:1, muted 6.9:1) | 4 | 4 |
+| Distinctiveness | 4: no other simulator dresses as a datasheet; pane-less full-bleed | 4 | 2: dark dev tool in Geist is the category default |
+| Fit for a circuit simulator | 5: EE students read datasheets daily | 3: drafting belongs to mechanical and architecture | 3: the bands are decoration, colour-only |
+| Mobile | 4 | 3: the title block breaks awkwardly at 360 | 4 |
+| **Total** | **23** | 18 | 17 |
+
+Chosen: **A**. Rejected directions stay as screenshots (`docs/ui-directions/b-*.png`, `c-*.png`) beside their CSS. Impeccable's Operate
+rule holds: the world lends type, palette, density and one signature move (the figure captions); controls stay standard web controls.
+
+## D48: Brand system (Phase 2)
+Method from the Brand Identity skill, by hand (D45). **Mechanism:** every result is a figure you could print in a datasheet; the mark is
+Figure 1, an RC step response v = 1 - exp(-t/RC) on its axes (the first curve spice-lite was validated against), drawn on a 100-unit
+grid (`web/public/brand/mark.svg`; favicon cut with heavier strokes on a paper tile so it reads on dark tabs: `web/public/favicon.svg`,
+`favicon-32.png`, `apple-touch-icon.png`, generated by `web/scripts/brand.mjs`). Wordmark: "spice·lite" in Archivo 700, the node dot in
+Signal blue. Reflex test: no AI-default face (Inter, Fraunces, Space Grotesk, Sora), no violet, no initial-in-a-tile, no spark or
+gradient orb. Palette and measured contrast in `docs/brand/brand-sheet.png`: Ink #111316 (18.6:1), Signal #0b4f9c (8.0:1), Graphite
+#555b63 (6.9:1), Fault #a31919 (7.7:1), Rule #b9bec6 (hairlines only, 1.9:1, never text); dark: Night #0e1013, Night ink #e8eaed
+(15.8:1), Night signal #7cb2ff (8.8:1). Type: Archivo 400/600/700 for UI, JetBrains Mono 400/600 for the netlist and numbers only
+(Impeccable: monospace for code and measurement, not as a "technical" costume).
+
+
+## D49: Design system (Phase 3)
+- **Tokens** in `web/src/style.css`: type (`--sans` Archivo, `--mono` JetBrains Mono, a 7-step size scale), space (4 px steps,
+  `--s1`..`--s8`, `--gutter`), shape (`--r1` 2 px, `--r2` 4 px, hairline and strong rules), shadow (`--shadow-pop`, for the toast only:
+  a datasheet has no shadows), motion (`--dur-1`..`--dur-4` 120-300 ms, `--dur-reveal` 600 ms for the one authored plot reveal,
+  `--ease-out` / `--ease-in-out` from Emil Kowalski), and colour. Light and dark are the same token names with different values; the
+  contrast test (unchanged) checks every text, state, syntax and trace pair in both themes (37 checks pass).
+- **Layout:** the two panes run full bleed, split by one black hairline; the header sits on a 2 px ink rule and the footer on a 1 px
+  one (a datasheet page), replacing the floating rounded cards and the graph-paper background.
+- **Components:** tabs carry a 3 px signal underline (no folder tabs); the Plot / Table switch is ink-filled when pressed; tables are
+  characteristics tables (strong top rule, sunken header, mono values right-aligned, sans for words); the gutter is sunken like a table
+  column; buttons and the select are 38 px tall (32 px for in-panel controls); the reference panel lost its 3 px coloured left border
+  (an Impeccable refuse-list item); monospace now appears only for the netlist, numbers, legends and axes.
+- **Plots:** the trace colours and their dash patterns are unchanged (Okabe-Ito, colour-blind safe, never colour alone).
+- **Browser surfaces:** text selection, caret, scrollbars, focus ring, link underline offset and tabular numerals are themed.
+- **Fonts:** `@fontsource/archivo` (400/600/700) and `@fontsource/jetbrains-mono` (400/600) replace IBM Plex Sans/Mono: self-hosted
+  latin subsets with `font-display: swap`, no third-party font request at runtime. Font files are data, not code; recorded per the
+  dependency rule.
+
+
+## D50: Motion (Phase 4)
+Rules: Emil Kowalski's `animate` / `review-animations` (installed, D45), Impeccable's `animate.md`, Taste's never-list. No library (D46).
+Thesis: one authored moment (the plot reveal); everything else is feedback or state, short and quiet; nothing moves for redraws.
+
+| Motion | Purpose | Ingredients | Frequency gate |
+|---|---|---|---|
+| First-load bar | state: which of the three worker steps is running | determinate fill, `transform: scaleX` to (k - 0.5)/3, 300 ms ease-out, "Step k of 3" text, `role=progressbar` | once per visit |
+| Plot reveal | the authored moment: a NEW result draws in | a surface-coloured mask over uPlot's plot area slides off (`scaleX` 1 -> 0, origin right), 600 ms ease-in-out; axes readable from frame 0; once per result and panel, never on tab switch, Plot/Table toggle, theme change, overlay, zoom or hover | once per run |
+| .op ticker | state: a re-run changed this value | rAF roll from the old value to the new, 300 ms ease-out, ends on the exact formatted text | only changed values, only after a re-run |
+| Change wash | state: which cells changed | `accent-soft` background fading to transparent, 1.4 s, colour only | same |
+| Error panel / warnings | feedback: something needs reading | opacity + 4 px rise, 240 ms ease-out | per failed run |
+| Gutter marker | points at the line | scale 0.6 -> 1 with a fading ring, 300 ms | per failed run |
+| Tab change | continuity | underline `scaleX` 180 ms; panel opacity only, 120 ms (tabs are used tens of times a day) | frequent: near-imperceptible |
+| Button press | feedback | `scale(0.97)` 120 ms ease-out; hover colour gated behind `(hover: hover) and (pointer: fine)` | frequent: subtle |
+| Theme toggle | explains a page-wide palette change | View Transitions cross-fade 240 ms; instant where unsupported | rare |
+| Copy link | confirmation on the control itself | label "Link copied" + signal border for 1.6 s, plus the existing toast (opacity + 8 px, 180 ms) | occasional |
+
+- **Not animated** (by the frequency gate): Run itself (press feedback only), Ctrl/Cmd+Enter, the examples `<select>` (a native control: its menu is the platform's, so no custom open/close motion), legend toggles, zoom.
+- **Properties:** transform and opacity everywhere except the change wash (background colour, by design) and the view-transition cross-fade. No `transition: all` (the old toast had one; removed).
+- **Reduced motion:** no reveal mask, no scale or movement (button press, gutter pulse, tab underline, toast), the error panel only fades,
+  the ticker jumps to the final value; the wash and the determinate bar stay (they carry meaning without movement). Tested in e2e.
+- **Main thread:** the reveal and the bar are CSS; the ticker is a 300 ms rAF loop after results arrive; nothing animates while the
+  worker is computing except the CSS bar during first load.
+- **Review** (`review-animations`, self-run, Approve after two fixes): the gutter pulse was 420 ms (over the 300 ms UI budget) -> 300 ms;
+  the reveal mask let a trace lying on the plot border show ahead of the sweep -> the mask now overhangs by 2 px. The 600 ms reveal is
+  kept deliberately: it is the one authored moment (Impeccable: 500-800 ms for a focal entrance), it runs once per result.
+- **Also fixed here** (found in the earlier code review): Ctrl/Cmd+Enter in the editor ran the netlist twice (the editor and the page
+  both handled it). The page listener now ignores keys the editor already handled; an e2e test counts renders.
+- **Tests:** `web/tests/motion.test.ts` (stages match the worker's messages, easing endpoints) and four e2e tests (reveal once,
+  reduced motion, changed-value roll and mark, single run on Ctrl+Enter).
+
+
+## D51: Landing band, capability table and element sheets (Phase 5)
+- **Placement:** a compact hero sits between the header bar and the workspace; the workspace keeps one full viewport of height on wide
+  screens, so "Try it" (loads `rc_step`, runs it, scrolls the workspace into view, focuses the editor) lands on a complete tool. The
+  capability table and the element sheets follow the workspace. Impeccable's modes: the hero is Persuade (one line that names the
+  category, the action in its working form), the workspace stays Operate.
+- **Demo (StageShow principles, built natively):** one product window (chrome with a Run pill, the netlist, Figure 1) drawn as SVG from
+  the committed ngspice reference of `examples/rc_step.cir` (real simulation output, 501 points, downsampled to ~160); the caption says so
+  and quotes the measured agreement (1.1e-5 of peak, `tests/test_vs_ngspice.py`). One 9 s CSS loop in four beats: Run pressed, the traces
+  draw (clip-path), t = RC is marked at 63.2 %, the result holds, then it fades and Run is pressed again (a reset with a visible cause).
+  Poster frame = the annotated result (shown under reduced motion). The loop pauses off screen (IntersectionObserver), in a hidden tab,
+  and by a "Pause demo" button (Taste: anything moving past 5 s has a pause control). If the data cannot load, the demo is hidden rather
+  than faked.
+- **Capability table:** a ruled feature table with varied spans (Kokonut-style bento, rebuilt without React), each cell with a small
+  diagram. Every number is checkable: 809 Python tests at the start of this run (now 824 with the sheet tests), 1e-9 / 1e-6 ngspice tolerances
+  (test files), 191 vs 5,000 steps (`REPORT_M8_M9.md`), Python 3.14 (footer), about 24 MB first visit (measured 23.9 MB, `REPORT_WEB.md`).
+- **Element sheets:** `web/src/element-sheets.json` (content) + `web/src/symbols.ts` (symbols drawn in code) render one monochrome sheet
+  per element (title block with code and sheet number, symbol on a fine grid, syntax, parameter / unit / default table, a numbered stamp
+  note, an example). `tests/test_element_sheets.py` fails if a parser letter has no sheet, a symbol is missing, an example does not parse,
+  or a documented diode / MOSFET default differs from the dataclass.
+- **Fixed while testing:** the `hidden` attribute lost to classes that set `display` (`.btn`); a base rule now makes it win.
+
+
+## D52: Audit (Phase 6) and report naming
+- All 35 examples ran through the built site (`web/scripts/audit.mjs`): no errors, no console errors, no failed requests. The simulation
+  code is untouched in this run (web_api, worker, engine); the Pyodide test still compares every example with the committed ngspice data.
+- Contrast: the token test (37 checks) plus a scan of every rendered text element in both themes: all at least WCAG AA.
+- Keyboard: tab order skip link > header controls > Try it > Supported elements > Pause demo > editor > tabs; a visible ring on every
+  control (the editor shows its ring on its container).
+- Reduced motion, 360 / 1440 px, light / dark, sub-path `/spice-lite/`: covered by e2e (24 tests) and the after-screenshots.
+- Size against the Phase 0 baseline: JS +4.6 kB gzip, CSS +2.1 kB, HTML +1.4 kB, fonts -30.1 kB (Archivo + JetBrains Mono replace
+  six IBM Plex files): about 22 kB less on first load; well inside the +150 kB budget, so no justification or cut was needed.
+- An e2e run straight after the screenshot scripts had 3 failures (one was the reference-overlay test); the next full run passed 24/24
+  and the three tests then passed 9 of 9 repeats. Not reproduced, cause not confirmed: recorded as intermittent, not fixed.
+- The refactor report moves to `REPORT_REFACTOR.md`; `REPORT.md` is the UI polish report (same convention as D38 and D44).

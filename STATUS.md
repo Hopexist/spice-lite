@@ -78,3 +78,22 @@ Started Mon Nov 9 15:26:52 EST 2026 (per `date`); time box ~2 h (final report by
 | stiff_adaptive .tran | 0.0104 s |
 | rlc_ring_adaptive .tran | 0.1081 s |
 | nmos_common_source .ac | 0.0019 s |
+
+# UI polish run (branch `ui-polish`)
+
+Started Mon Nov 9 16:27:12 EST 2026 (per `date`); time box ~3 h (final report by 19:07 at the latest). Baseline: `pytest -q` 809 passed,
+0 skipped (ngspice via `NGSPICE`); `npm test` 103 passed.
+
+| Phase | State | Notes |
+|---|---|---|
+| 0. Baseline | done | docs/ui-before/: 7 states x 360/1440 x dark/light = 28 shots (web/scripts/shots.mjs, Edge, reduced motion); no console errors |
+| 1. Tools and skills | done | DECISIONS D45 (tool table) and D46 (no animation library, measured costs); 3 MIT skills installed in .claude/skills |
+| 2. Design direction | done | A Datasheet chosen 23 vs 18 vs 17 (D47); mark, favicons, palette and type (D48) |
+| 3. Design system | done | tokens, both themes, every component restyled, fonts self-hosted (D49); CSS 4.54 kB gzip (was 4.08) |
+| 4. Motion | done | D50 table; no library; e2e 20 passed (4 new motion tests), npm test 106; also fixed the double run on Ctrl+Enter |
+| 5. Landing and spec sheets | done | hero + live demo from rc_step data, capability table, 11 element sheets (D51); e2e 24, pytest 824 |
+| 6. Audit | done | 35 examples clean; contrast AA both themes; keyboard and focus; sizes -22 kB net; e2e 24, npm test 106, pytest 824 (D52) |
+
+Baseline size and load: JS 375.7 kB (129.4 kB gzip), CSS 13.9 kB (4.1 kB gzip), index.html 1.4 kB gzip; dist/ 1.71 MB in total
+(includes 0.9 MB of reference JSON fetched only on demand, the 54 kB wheel and the font files). First results 10.3 s on a cold browser
+cache (Pyodide + numpy + scipy from the CDN), measured by shots.mjs.

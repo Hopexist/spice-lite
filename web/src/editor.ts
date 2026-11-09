@@ -45,7 +45,7 @@ const theme = EditorView.theme({
   "&": { height: "100%", color: "var(--ink)", backgroundColor: "var(--surface)" },
   ".cm-scroller": { fontFamily: "var(--mono)", fontSize: "13.5px", lineHeight: "1.6" },
   ".cm-content": { caretColor: "var(--accent)", padding: "10px 0" },
-  ".cm-gutters": { backgroundColor: "var(--surface)", color: "var(--muted)", border: "none", borderRight: "1px solid var(--line)" },
+  ".cm-gutters": { backgroundColor: "var(--sunken)", color: "var(--muted)", border: "none", borderRight: "1px solid var(--grid)" },
   ".cm-activeLine": { backgroundColor: "var(--active-line)" },
   ".cm-activeLineGutter": { backgroundColor: "var(--active-line)", color: "var(--ink)" },
   ".cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": { backgroundColor: "var(--selection) !important" },

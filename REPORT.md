@@ -1,104 +1,86 @@
-# Report: single stamping path and MOSFET capacitances (branch `refactor-stamping`)
+# Report: UI polish (branch `ui-polish`)
 
-Started Mon Nov 9 15:26:52 EST 2026 (per `date`), finished about 16:30: all four phases inside the 1 h 40 m box. Nothing was pushed or tagged.
-Previous reports: `REPORT_WEB.md` (web UI), `REPORT_M8_M9.md`, `REPORT_M5_M7.md`.
+Started Mon Nov 9 16:27:12 EST 2026 (per `date`), audit finished 17:46: all phases inside the 2 h 40 m limit. Nothing was pushed or
+tagged. Previous reports: `REPORT_REFACTOR.md` (stamping refactor, earlier today), `REPORT_WEB.md`, `REPORT_M8_M9.md`, `REPORT_M5_M7.md`.
+Decisions: DECISIONS D45 to D52.
 
-## Bugs found (both fixed with a failing test first)
-1. **`mna.build` / `mna.solve` silently dropped MOSFETs.** The guard that stops a nonlinear device from being built without Newton
-   covered diodes only; a MOSFET circuit built directly came back with the transistor missing and a plausible answer. The analyses
-   themselves were unaffected (they route MOSFET circuits through Newton), so no published result was wrong, but the public `mna`
-   API was. Test: `tests/test_edge_cases.py::test_mna_build_refuses_a_mosfet_instead_of_silently_dropping_it`.
-2. **`.tran ... uic` failed for any two capacitors in parallel** ("closes a loop of voltage sources"), on `main` too: the t = 0
-   state held every capacitor as a voltage source. Now one source per node pair, current split by capacitance (D43).
-   Test: `tests/test_edge_cases.py::test_parallel_capacitors_with_uic_start_from_the_ic_instead_of_failing`.
+## What was built
+| Phase | Result |
+|---|---|
+| 0. Baseline | `docs/ui-before/`: 7 states (empty, example, .op, .dc, .ac, .tran, error) x 360 / 1440 px x dark / light; `web/scripts/shots.mjs` re-creates the set |
+| 1. Tools | every tool read before use, scratchpad only; three MIT skills installed in `.claude/skills/` (dimensional-drawing, animate, review-animations); table below |
+| 2. Direction | three CSS overlays on the real app, compared at 480 px (`docs/ui-directions/`); **A, Datasheet** chosen; brand: mark (Figure 1, an RC step response on its axes), favicon set, palette and type with measured contrast (`docs/brand/brand-sheet.png`) |
+| 3. Design system | tokens for type, space, shape, shadow, motion and colour; light and dark from the same names; every component restyled; Archivo + JetBrains Mono self-hosted (latin subsets, `font-display: swap`) |
+| 4. Motion | one authored moment (new results draw in once), a determinate first-load bar, .op values that roll and mark when a re-run changes them, calm error entrance and gutter pulse, tab and theme transitions, copy confirmation; no animation library |
+| 5. Landing and sheets | a hero with a live demo drawn from real simulation data (`rc_step`, 4 beats, 9 s loop, pausable, poster frame under reduced motion), a ruled capability table whose every number is checkable, and 11 element spec sheets generated from a data file that a test ties to the parser |
+| 6. Audit | below |
 
-## What changed
-- **Phase 0, safety net.** `tests/golden_refactor/`: the CLI's own `--csv` output (repr floats) for every example, plus a sparse-solver
-  set for the linear ones; `tests/test_regression.py` compares every sample at rtol 1e-12. The existing golden tests only compared
-  summary statistics at 1e-9 and missed the M8/M9 examples; they are kept. `benchmarks/bench_sparse.py` now also times adaptive
-  `.tran`; `benchmarks/bench_examples.py` times the nonlinear and adaptive examples.
-- **Phase 1, audit.** Dispatch table in DECISIONS D39 (summary below).
-- **Phase 2, one stamping path.** `elements.STAMPS` maps each element class to a `Stamp`: the matrix part that depends only on s, the
-  source value, a Newton flag, the small-signal AC model and an expansion. `mna.stamp_matrix` / `mna.stamp_sources` are the only loops
-  over element types; `mna.build`, the transient's companion matrix (still factored once per step size, cache of 64), its per-step
-  source vector and the AC small-signal path all use them. The voltage-source stamp now shares the V/E/H skeleton. `_newton` refuses
-  device types it cannot linearise. Guard: `tests/test_stamp_registry.py` (checked by deleting one entry: it fails). Why a registry
-  rather than methods on the element classes: D40.
-- **Phase 3, MOSFET capacitances.** `CGSO`, `CGDO` (F/m of width), `CGBO` (F/m of length), `CBD`, `CBS` (F) become hidden linear
-  capacitors through `Stamp.expand` (D42), so AC and both transient modes use the ordinary capacitor stamp and companion model. Meyer
-  gate capacitance and the junction depletion law are skipped (`shortcut:` note, README limitation). New examples
-  `cmos_inverter_overlap.cir` and `nmos_cs_bandwidth.cir`.
-- **Phase 4.** README (models row, MOSFET syntax, limitations), web reference data for the two new examples, this report.
-
-## Dispatch table, before and after
-| Site | Before | After |
+## Tools (DECISIONS D45, D46)
+| Tool | Verdict | Why, in one line |
 |---|---|---|
-| `mna.build` | if/elif over 9 linear types; D guarded; **M fell through** | `stamp_matrix` + `stamp_sources` over the registry; D and M raise unless Newton asked |
-| `tran` companion matrix | its own copy of the 8-type chain | `stamp_matrix(..., s = 1/h or 2/h)` |
-| `tran` per-step sources | its own V / I branch | registry `rhs` functions, resolved once before the time loop |
-| `ac` nonlinear path | separate diode and MOSFET loops, bias extraction inline | registry `small_signal`, linearised once per sweep |
-| `newton._expand` | diode RS special case | registry `expand` (diode RS, MOSFET capacitances) |
-| `newton._newton` | diodes / MOSFETs by isinstance, anything else ignored | same, plus an error for any other device |
-| topology, `element_nodes`, `branch_elements`, waveform breakpoints | per-type rules | unchanged (rules, not stamping) |
+| StageShow | partly used | React kit not added (no framework); its demo principles followed by hand |
+| Impeccable | partly used | its launcher downloads a binary: not run; its quality floor, refuse list, Operate / Persuade modes and motion guide applied |
+| Dimensional Drawing | used, installed | pure instructions; drives the element spec sheets |
+| Oil UI | partly used | update-check and upsell scripts, paid image credits not used; three-direction method followed |
+| Emil Kowalski skills | used, installed | `animate` and `review-animations` set the motion rules and the review |
+| Taste Skill | partly used | registers a Stop hook and downloads assets: not installed; its rules applied (found as `Leonxlnx/taste-skill`) |
+| Brand Identity | partly used | its pipeline self-installs packages and costs ~0.9 M tokens: not run; its method followed by hand |
+| Awwwards MCP | skipped | not configured in this session; three reference sites read instead (Linear, Falstad, Wokwi) |
+| anime.js vs Motion | neither | measured 13.3 kB vs 28.4 kB (3.7 kB for `motion/mini`) gzip; CSS + Web Animations did everything |
+| Kokonut UI, Bklit UI, Manus | studied | patterns rebuilt natively (ruled bento with live diagrams, draw-in charts, rolling values); nothing copied |
+
+## Design-direction scorecard (D47)
+| Criterion | A Datasheet | B Drafting vellum | C Night bench |
+|---|---|---|---|
+| Legibility of plots | 5 | 4 | 4 |
+| Contrast | 5 | 4 | 4 |
+| Distinctiveness | 4 | 4 | 2 |
+| Fit for a circuit simulator | 5 | 3 | 3 |
+| Mobile | 4 | 3 | 4 |
+| **Total** | **23** | 18 | 17 |
+
+## Size and timing (Phase 0 baseline vs final build)
+| | Before | After |
+|---|---:|---:|
+| JS (gzip) | 129.4 kB | 134.0 kB (+4.6) |
+| CSS (gzip) | 4.1 kB | 6.2 kB (+2.1) |
+| HTML (gzip) | 1.4 kB | 2.8 kB (+1.4) |
+| Fonts (woff2) | 116.2 kB, 6 files | 86.1 kB, 5 files (-30.1) |
+| First load, own assets | | about **22 kB less** than before |
+| `dist/` total | 1.708 MB | 1.711 MB |
+| First results, cold browser cache | 10.3 s | 10.0 to 11.5 s across three measurements |
+
+First-load time is dominated by Pyodide, NumPy and SciPy from the CDN (24.3 MB measured); the spread is download variance, not the page.
+
+## Accessibility
+- Contrast: the stylesheet token test (37 pairs, both themes) and a scan of every rendered text element in both themes: all WCAG AA or better.
+- Colour is never the only cue: traces keep dash patterns; the demo legend shows solid and dashed keys; changed values are also rolled.
+- Keyboard: logical tab order through the new hero controls; visible focus rings everywhere; tabs keep arrow-key navigation.
+- Reduced motion: no movement or scaling anywhere; the demo shows its poster frame and hides its pause button; tested in e2e.
+- Tap targets: hero actions 44 px; other controls 38 px (in-panel 32 px).
 
 ## Tests
-| Run | Result |
-|---|---|
-| Baseline (`main`, ngspice on) | 718 passed, 0 skipped |
-| After Phase 0 / 1 / 2 / 3 | 775 / 776 / 791 / 809 passed, 0 skipped |
-| **Final** (`pytest -q`, ngspice 41 via `NGSPICE`) | **809 passed, 0 skipped**; `ruff check .` clean |
-| Golden outputs (all 33 original examples, dense and sparse) | identical to rtol 1e-12 after every phase |
-| Every example through the CLI | 35 / 35 ran |
-| Frontend `npm test` (unit tests + every example in real Pyodide vs the ngspice reference) | 103 passed |
-| `npm run build`, then Playwright e2e (Edge, including the `/spice-lite/` sub-path) | build OK (JS 129 kB gzip, unchanged); 16 passed |
+| Suite | Baseline | Final |
+|---|---|---|
+| `pytest -q` (ngspice 41 via `NGSPICE`) | 809 passed, 0 skipped | **824 passed, 0 skipped** (+15 element-sheet tests) |
+| `npm test` (vitest, incl. every example in real Pyodide vs ngspice) | 103 | **106** (+3 motion) |
+| Playwright e2e (Edge, incl. `/spice-lite/` sub-path) | 16 | **24** (+4 motion, +4 landing) |
+| `npm run build`, `ruff check .` | ok | ok |
 
-One existing test changed its example input: `test_mosfet.py` used `CGSO=1p` as an *unsupported* parameter; it now uses `TOX=1n`
-(still unsupported), so it checks the same error path. No test was deleted, skipped or loosened.
+## Bugs found and fixed along the way
+- Ctrl/Cmd+Enter in the editor ran the netlist twice (found in the earlier code review); now once, with an e2e test that counts renders.
+- The `hidden` attribute lost to classes that set `display`, so the demo pause button stayed visible under reduced motion; a base rule fixes it everywhere.
 
-## ngspice agreement for the new capacitances
-| Circuit | Analysis | Tolerance | Observed worst |
-|---|---|---|---|
-| `nmos_cs_bandwidth`, CGSO = CGDO = 5 nF/m | `.ac` | 1e-6 relative | 9.1e-13 |
-| same, capacitances removed | `.ac` | 1e-6 relative | 9.1e-13 |
-| `cmos_inverter_overlap` (0.1 pF load, CGSO = CGDO = 2 nF/m, 1k gate drive) | `.tran` | 2e-3 of peak | 4.4e-4 (generator current) |
-| same, capacitances removed | `.tran` | 2.5e-2 of peak | 5.6e-3 (supply current, faster edges) |
-
-Analytic checks: the Miller pole Rs (Cgs + Cgd (1 + |A|)) = 34 MHz matches the simulated -3 dB point within 25 % (the overlap capacitance
-cuts the bandwidth from ~400 MHz to ~30 MHz); CBD alone and Cgs + Cgd + Cgb discharge as RC exponentials to 1e-4 / 1e-5; zero
-capacitances are bit-identical to the M8 device.
-
-## Timing (same-session A/B: old `src/` from `git archive` vs new, best of N, idle machine)
-| Workload | Before | After | Change |
-|---|---:|---:|---:|
-| `.op` sparse, 1000-section ladder | 13.3 ms | 11.6 ms | within noise |
-| `.tran` dense, 100 sections | 73.4 ms | 71.8 ms | -2 % |
-| `.tran` sparse, 1000 sections | 255 ms | 249 ms | -2 % |
-| adaptive `.tran` dense, 1000 sections | 1.94 s | 1.84 s | -5 % |
-| adaptive `.tran` sparse, 1000 sections | 322 ms | 341 ms | +6 % |
-| `diode_rectifier_tran` | 223 ms | 226 ms | +2 % |
-| `cmos_inverter_tran` | 534 ms | 546 ms | +2 % |
-| `stiff_adaptive` | 11.9 ms | 12.2 ms | +3 % |
-| `rlc_ring_adaptive` | 123 ms | 122 ms | -1 % |
-| `nmos_common_source .ac` (200 repeats) | 1.88 ms | 2.00 ms | **+7 %** (registry overhead in the per-frequency rebuild; inside the 10 % budget) |
-
-The stand-alone benchmark moved by up to 39 % between identical runs on this machine (and a dense `.op` by 3x while a browser test ran),
-so the 10 % rule was judged on the A/B, not against the baseline table in STATUS.md (D41).
-
-## Things you should know
-- **Fixed-step trapezoidal ringing** on a capacitor current when the capacitor sits directly between ideal sources (the PMOS Cgs between
-  an ideal gate drive and Vdd): 11 % of peak on i(vdd) against ngspice; the voltages are fine. The example therefore drives the gate
-  through 1k (D42). The real fix is a backward-Euler step after each source corner (what ngspice does), but it changes existing results,
-  which this run forbade: next step 1.
-- **Adaptive stepping fails** (step below hmin just after the edge) in that same ideal-source case; with the 1k drive it runs (851 points).
-- CBD / CBS are fixed values; ngspice applies a depletion law when they are given, so only the overlap terms are verified against it.
-- The web bundle and its reference data include the two new examples; the live site picks them up on the next Pages deploy.
-- `graphify-out/` is now in `.gitignore`.
-
-## Skipped
-Nothing from the brief. Out of scope and not done: Meyer capacitances, junction depletion and bulk diodes, a backward-Euler restart step.
+## Skipped, blocked or not verified
+- Awwwards MCP (not configured); Bklit's catalog site (redirects; the repository was read instead).
+- No custom animation for the examples menu: it is a native `<select>`, whose menu belongs to the platform.
+- Oil UI's independent visual reviewer was not dispatched (no reviewer agent was requested for this run); the review is my own, with screenshots.
+- One e2e run had 3 intermittent failures that did not reproduce (24/24 on the next run, 9 of 9 repeats); cause not confirmed.
+- The live site is not updated until `main` is pushed and Pages deploys.
 
 ## Suggested next steps
-1. A backward-Euler (or Gear-2) step after each breakpoint in fixed-step trapezoidal, behind an option first, then compare the goldens.
-2. Depletion-law junction capacitances (CJ, MJ, PB, FC) so CBD / CBS can be checked against ngspice.
-3. Meyer gate capacitances with TOX, so inverter delay no longer depends on overlap capacitance only.
-4. Cache the AC small-signal matrix across frequencies (only s changes) to win back the 7 %.
+1. Push and let Pages deploy; check the live first load on a phone.
+2. A small Playwright visual-regression set from `docs/ui-after/`, so a CSS change cannot silently undo the design.
+3. Let the demo run the real engine once Pyodide is ready, and swap in spicelite's own curve.
+4. Click-to-insert from the element sheets into the editor.
+5. A print stylesheet, so a result prints as an actual datasheet page.
