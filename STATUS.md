@@ -46,3 +46,35 @@ Baseline at start: 648 passed, 0 skipped (`which ngspice` finds nothing; ngspice
 
 Spike result (`web/scripts/pyodide-spike.mjs`; run: `cd web && npm install && node scripts/pyodide-spike.mjs <dir with spicelite wheel> ../examples/rc_lowpass.cir`):
 pyodide boot 3.1 s, numpy+scipy load 3.6 s (first run, CDN downloads), total 10.7 s in Node; result -0.000434 dB at 10 Hz and -40.0004 dB at 100 kHz, identical to the CLI.
+
+# Stamping refactor run (branch `refactor-stamping`)
+
+Started Mon Nov 9 15:26:52 EST 2026 (per `date`); time box ~2 h (final report by 17:06 at the latest).
+`which ngspice`: not on PATH; ngspice 41 reached through `NGSPICE` as in every earlier run (D1/D16). Baseline `pytest -q`: **718 passed, 0 skipped**.
+
+| Phase | State | Notes |
+|---|---|---|
+| 0. Safety net | done | tests/golden_refactor/: CLI `--csv` output (repr floats) for all 33 examples (51 files) + sparse-solver output for the 21 linear ones (37 files); compared at rtol 1e-12, atol 1e-18 |
+| 1. Audit | done | DECISIONS D39 table; bug: `mna.build` silently dropped MOSFETs (test first, fixed) |
+| 2. Single stamping path | done | elements.STAMPS registry (D40); 791 passed; goldens match to 1e-12; A/B timings within ±6% (D41) |
+| 3. MOSFET capacitances | done | CGSO/CGDO/CGBO/CBD/CBS via Stamp.expand (D42); 2 examples; AC vs ngspice 9e-13, tran 4.4e-4 of peak; bug: parallel C with uic (D43, test first) |
+| 4. Audit and report | done | 809 passed, 0 skipped; 35 examples via CLI; npm test 103, build, e2e 16 passed; REPORT.md |
+
+### Baseline timings (before the refactor; best of 7, this machine)
+`python benchmarks/bench_sparse.py --sizes 10 100 1000 --repeat 7` (now also times adaptive `.tran`):
+
+| sections | unknowns | .op dense | .op sparse | speed-up | .tran dense | .tran sparse | speed-up | adaptive dense | adaptive sparse | speed-up |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 10 | 12 | 0.0001 s | 0.0003 s | 0.4x | 0.0042 s | 0.0038 s | 1.1x | 0.0074 s | 0.0079 s | 0.9x |
+| 100 | 102 | 0.0142 s | 0.0012 s | 11.7x | 0.0919 s | 0.0231 s | 4.0x | 0.0779 s | 0.0315 s | 2.5x |
+| 1000 | 1002 | 0.1344 s | 0.0110 s | 12.3x | 0.7024 s | 0.2189 s | 3.2x | 1.5586 s | 0.2664 s | 5.9x |
+
+`python benchmarks/bench_examples.py` (best of 5; AC best of 20):
+
+| workload | time |
+|---|---:|
+| diode_rectifier_tran .tran | 0.1919 s |
+| cmos_inverter_tran .tran | 0.4645 s |
+| stiff_adaptive .tran | 0.0104 s |
+| rlc_ring_adaptive .tran | 0.1081 s |
+| nmos_common_source .ac | 0.0019 s |

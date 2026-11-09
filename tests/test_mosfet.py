@@ -58,7 +58,7 @@ def test_parameters_may_have_spaces_around_equals_and_any_order():
     ("M1 d g s b nm W=0\n.model nm NMOS (VTO=1)\n", r"line 2: 'm1': W must be positive"),
     ("M1 d g s b nm L=-1u\n.model nm NMOS (VTO=1)\n", r"line 2: 'm1': L must be positive"),
     ("M1 d g s b nm\n.model nm NMOS (LEVEL=3 VTO=1)\n", r"line 3: only LEVEL=1"),
-    ("M1 d g s b nm\n.model nm NMOS (CGSO=1p)\n", r"line 3: unsupported MOS parameter 'cgso=1p'; supported: LEVEL, VTO, KP"),
+    ("M1 d g s b nm\n.model nm NMOS (TOX=1n)\n", r"line 3: unsupported MOS parameter 'tox=1n'; supported: LEVEL, VTO, KP"),
     ("M1 d g s b nm\n.model nm NMOS (VTO=1 VTO=2)\n", r"line 3: duplicate model parameter 'VTO'"),
     ("M1 d g s b nm\n.model nm NMOS (KP=-1)\n", r"line 3: MOS model needs KP > 0"),
     ("M1 d g s b nm\n.model nm NMOS (GAMMA=-1)\n", r"line 3: MOS model needs"),
@@ -376,3 +376,88 @@ def test_reverse_conduction_swap_matches_ngspice():
     # shortcut check: the sweep stays at Vs >= 0 because below that the grounded bulk would forward-bias ngspice's
     # bulk-source junction diode, which spicelite reduces to its GMIN (documented limitation).
     max_gap(dc_sweep(parse(REVERSE)), run_dc(REVERSE, TIGHT), 1e-8)
+
+
+# ---- intrinsic capacitances: overlap (CGSO, CGDO, CGBO) and fixed junction (CBD, CBS) ------------------------------
+
+def test_capacitances_expand_into_linear_capacitors_with_ngspice_scaling():
+    from spicelite.analysis.newton import _expand
+    c = parse("t\nM1 d g s b nm W=10u L=2u\nV1 d 0 DC 1\n.model nm NMOS (CGSO=1n CGDO=2n CGBO=3n CBD=4f CBS=5f)\n.op\n")
+    ex = _expand(c)
+    caps = {e.name: (e.n1, e.n2, e.value) for e in ex.elements if type(e).__name__ == "Capacitor"}
+    assert caps == {"m1#cgs": ("g", "s", pytest.approx(1e-9 * 10e-6)), "m1#cgd": ("g", "d", pytest.approx(2e-9 * 10e-6)),
+                    "m1#cgb": ("g", "b", pytest.approx(3e-9 * 2e-6)),  # CGBO is per unit LENGTH
+                    "m1#cbd": ("b", "d", 4e-15), "m1#cbs": ("b", "s", 5e-15)}
+    assert _expand(ex).elements == ex.elements  # a fixed point: expanding twice adds nothing
+
+
+def test_zero_capacitances_reproduce_the_capacitance_free_device_bit_for_bit():
+    zeros = " CGSO=0 CGDO=0 CGBO=0 CBD=0 CBS=0)"
+    for name, run in (("cmos_inverter_tran", lambda c: tran(c).voltages), ("nmos_common_source", lambda c: ac(c).voltages)):
+        text = (EXAMPLES / f"{name}.cir").read_text()
+        a, b = run(parse(text)), run(parse(text.replace("LAMBDA=0.02)", "LAMBDA=0.02" + zeros)))
+        assert all(np.array_equal(a[k], b[k]) for k in a), name
+
+
+def test_bulk_drain_junction_capacitance_discharges_like_an_rc():
+    """MOSFET off (gate at 0 V), bulk grounded: the drain node sees only R and CBD, so from .ic v(d) = 1 V it decays
+    as exp(-t / R CBD), tau = 1 ns. Trapezoidal error at h = tau/100 is ~1e-5."""
+    text = "t\nR1 d 0 1k\nM1 d 0 0 0 nm\n.model nm NMOS (VTO=1 CBD=1p)\n.ic v(d)=1\n.tran 10p 5n uic\n"
+    r = tran(parse(text))
+    assert np.max(np.abs(r.voltages["d"] - np.exp(-r.time / 1e-9))) < 1e-4
+
+
+def test_gate_capacitances_load_the_driver_like_an_rc():
+    """Gate to ground through R, device in cutoff with drain, source and bulk grounded: Cgs + Cgd + Cgb are in parallel
+    (0.4 + 0.4 + 0.2 pF), so from .ic v(g) = 0.5 V the gate decays with tau = 10k x 1 pF = 10 ns."""
+    text = ("t\nR1 g 0 10k\nM1 0 g 0 0 nm W=10u L=1u\n.model nm NMOS (VTO=1 CGSO=40n CGDO=40n CGBO=200n)\n"
+            ".ic v(g)=0.5\n.tran 10p 20n uic\n")
+    r = tran(parse(text))
+    assert np.max(np.abs(r.voltages["g"] - 0.5 * np.exp(-r.time / 10e-9))) < 1e-5
+
+
+def _f3db(a) -> float:
+    mag = 20 * np.log10(np.abs(a.voltages["out"]))
+    k = int(np.argmax(mag < mag[0] - 3))
+    return float(np.exp(np.interp(mag[0] - 3, [mag[k], mag[k - 1]], np.log([a.freqs[k], a.freqs[k - 1]]))))
+
+
+def test_miller_capacitance_sets_the_common_source_bandwidth():
+    """Rs (Cgs + Cgd (1 + |A|)) is the input pole: about 34 MHz here (|A| ~ 2.67, Cgs = Cgd = 100 fF, Rs = 10k).
+    The output pole and Cgd's feed-forward zero pull the true -3 dB point a little lower; 25 % allows for that."""
+    text = (EXAMPLES / "nmos_cs_bandwidth.cir").read_text()
+    with_caps, without = _f3db(ac(parse(text))), _f3db(ac(parse(text.replace(" CGSO=5n CGDO=5n", ""))))
+    r = op(parse(text))
+    gain = 0.0  # small-signal gain from the bias point: gm (Rd || ro)
+    m = parse(text).mosfets()[0]
+    _i, gm, gds, *_ = mos_eval(m, r.voltages["in"], r.voltages["out"], 0.0)
+    gain = gm / (gds + 1 / 5e3)
+    miller = 1 / (2 * math.pi * 10e3 * (100e-15 + 100e-15 * (1 + gain)))
+    assert with_caps == pytest.approx(miller, rel=0.25)
+    assert without > 10 * with_caps  # without the overlap capacitance only the 0.1 pF output pole is left
+
+
+@needs_ngspice
+@pytest.mark.parametrize("caps", [True, False], ids=["with_caps", "without_caps"])
+def test_overlap_capacitance_circuits_match_ngspice(caps):
+    """Both examples, with and without the overlap capacitances, against ngspice (whose level 1 has no Meyer
+    capacitance without TOX, so overlap is all it adds). AC: 1e-6 relative, observed 9e-13. Transient
+    (1k-driven inverter, 0.1 pF): fraction of peak; observed with caps 4.4e-4 (tolerance 2e-3), without caps
+    5.6e-3 on the supply current at the faster edges (tolerance 2.5e-2)."""
+    from spicelite.ngspice import run_tran
+    ac_text = (EXAMPLES / "nmos_cs_bandwidth.cir").read_text()
+    tr_text = (EXAMPLES / "cmos_inverter_overlap.cir").read_text()
+    if not caps:
+        ac_text, tr_text = ac_text.replace(" CGSO=5n CGDO=5n", ""), tr_text.replace(" CGSO=2n CGDO=2n", "")
+    mine, ref = ac(parse(ac_text)), run_ac(ac_text, TIGHT)
+    for name, v in mine.voltages.items():
+        w = ref.voltages[name]
+        assert np.all(np.abs(v - w) <= 1e-6 * np.abs(w) + 1e-12), name
+    mine, ref = tran(parse(tr_text)), run_tran(tr_text)
+    tol = 2e-3 if caps else 2.5e-2
+    for kind in ("voltages", "currents"):
+        for name, a in getattr(mine, kind).items():
+            b = np.interp(mine.time, ref.time, getattr(ref, kind)[name])
+            assert np.abs(a - b).max() <= tol * max(np.abs(b).max(), 1e-12), f"{name}"  # floor: no gate current without caps
+    if caps:  # the Miller feed-through is real: the output overshoots the rails at the input edges
+        assert mine.voltages["out"].max() > 5.2 and mine.voltages["out"].min() < -0.2

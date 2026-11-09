@@ -37,7 +37,8 @@ _METHOD = re.compile(r"method=(trap|be)")
 _STEP = re.compile(r"step=(fixed|adaptive)")
 _MODEL = re.compile(r"\.model\s+(\S+)\s+([a-z]+)\s*\(?([^)]*)\)?\s*$")
 _MODEL_PARAMS = ("is", "n", "rs")
-_MOS_PARAMS = ("level", "vto", "kp", "lambda", "gamma", "phi")
+_MOS_PARAMS = ("level", "vto", "kp", "lambda", "gamma", "phi", "cgso", "cgdo", "cgbo", "cbd", "cbs")
+ELEMENT_LETTERS = "rclvidegfhm"  # every element type a netlist may contain (first letter of its name)
 _TWO_TERMINAL = {"r": (Resistor, "resistance"), "c": (Capacitor, "capacitance"),
                  "l": (Inductor, "inductance")}
 
@@ -130,7 +131,8 @@ def _parse_tran(tokens: list[str], num: int) -> TranSpec:
 
 
 def _parse_model(low: str, num: int) -> DiodeModel | MosModel:
-    """`.model name D(IS=.. N=.. RS=..)` or `.model name NMOS|PMOS(LEVEL=1 VTO=.. KP=.. LAMBDA=.. GAMMA=.. PHI=..)`;
+    """`.model name D(IS=.. N=.. RS=..)` or `.model name NMOS|PMOS(LEVEL=1 VTO=.. KP=.. LAMBDA=.. GAMMA=.. PHI=..
+    CGSO=.. CGDO=.. CGBO=.. CBD=.. CBS=..)`;
     type and parameter names are case-insensitive (the caller lowercases the line)."""
     m = _MODEL.match(low)
     if not m:
@@ -292,7 +294,7 @@ def parse(text: str) -> Circuit:
                 continue
             raise NetlistError(f"unsupported directive {name!r}", num)
         kind = name[0]
-        if kind not in "rclvidegfhm":
+        if kind not in ELEMENT_LETTERS:
             raise NetlistError(f"unsupported element {name!r}", num)
         if name in seen:
             raise NetlistError(f"duplicate element name {name!r}", num)

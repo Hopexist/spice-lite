@@ -20,8 +20,8 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 
-from ..circuit import Circuit, ConvergenceError, Diode, Mosfet, Resistor, SingularCircuitError
-from ..elements import VT, diode_iv, mos_current, mos_threshold, stamp_diode, stamp_mosfet
+from ..circuit import Circuit, ConvergenceError, Diode, Mosfet, SingularCircuitError
+from ..elements import VT, diode_iv, mos_current, mos_threshold, stamp_diode, stamp_mosfet, stamp_of
 from ..mna import build, check_topology
 
 # Same tight tolerances the ngspice runner uses for its transient reference (ngspice's own
@@ -29,6 +29,7 @@ from ..mna import build, check_topology
 RELTOL, ABSTOL, VNTOL = 1e-6, 1e-14, 1e-9
 MAX_ITER = 100  # per Newton run; ngspice's ITL1 is also 100
 GMIN_STAGES = [10.0**-k for k in range(2, 13)] + [0.0]  # 1e-2 ... 1e-12, then none
+NEWTON_DEVICES = (Diode, Mosfet)  # the device types _newton linearises; anything else registered as newton is an error
 
 
 @dataclass
@@ -121,17 +122,13 @@ def limit_mos(raw: tuple[float, float, float], old: tuple[float, float, float], 
 
 
 def _expand(circuit: Circuit) -> Circuit:
-    """Give each diode with series resistance RS > 0 a hidden internal node: the resistor
-    runs anode -> "<name>#int" and the junction itself runs "<name>#int" -> cathode.
-    Idempotent: the junction diode is left with RS = 0, so expanding twice changes nothing."""
+    """Replace each element by its registered expansion (elements.Stamp.expand): a diode with RS > 0 gets a hidden
+    internal node "<name>#int" and resistor, a MOSFET its capacitances as hidden capacitors "<name>#cgs" ...
+    Idempotent: an expanded device is a fixed point, so expanding twice changes nothing."""
     out = []
     for e in circuit.elements:
-        if isinstance(e, Diode) and e.model.RS > 0:
-            mid = f"{e.name}#int"
-            out += [Resistor(f"{e.name}#rs", e.anode, mid, e.model.RS),
-                    Diode(e.name, mid, e.cathode, e.model_name, replace(e.model, RS=0.0))]  # RS now lives in the resistor
-        else:
-            out.append(e)
+        expand = stamp_of(e).expand
+        out += expand(e) if expand else [e]
     return replace(circuit, elements=out)
 
 
@@ -139,6 +136,8 @@ def _newton(A_lin, b_lin, idx, n, devices, names, x_start, gshunt, max_iter, rel
     """Plain Newton from x_start over the nonlinear `devices` (diodes and MOSFETs).
     Returns (x, iterations) or raises ConvergenceError."""
     size = len(b_lin)
+    if unknown := [d.name for d in devices if not isinstance(d, NEWTON_DEVICES)]:
+        raise TypeError(f"no Newton linearisation for {', '.join(unknown)}")
     diodes = [d for d in devices if isinstance(d, Diode)]
     mosfets = [d for d in devices if isinstance(d, Mosfet)]
     pa = [idx.get(d.anode) for d in diodes]

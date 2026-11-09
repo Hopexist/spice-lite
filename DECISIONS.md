@@ -238,3 +238,72 @@ Each entry: choice, alternatives, why.
 
 ## D38: Report naming
 The M8-M9 report moves to `REPORT_M8_M9.md` (as the M5-M7 one did earlier) and `REPORT.md` is now the web UI report. Alternative: `REPORT_WEB.md`; rejected to keep "REPORT.md = latest run".
+
+# Stamping refactor run
+
+## D39: Element-dispatch audit (Phase 1, before the refactor)
+Every place the code branches on element type, and what it handles (✓ handled, – deliberately not applicable, ✗ gap).
+
+| Site | R | C | L | V | I | D | M | E | G | F | H | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `parser.py` element letters (`rclvidegfhm`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | source of truth for what a netlist can contain |
+| `mna.build` (DC, AC, t = 0 solve; Newton's linear part) | ✓ | ✓ | ✓ | ✓ | ✓ | guard | **✗** | ✓ | ✓ | ✓ | ✓ | D raised `NotImplementedError` unless Newton asked; **M fell through and stamped nothing** (bug, fixed with a test first) |
+| `tran.matrix` (companion matrix per step size h) | ✓ | ✓ | ✓ | ✓ | – | – | – | ✓ | ✓ | ✓ | ✓ | duplicate of the `mna.build` chain; I is RHS-only; D and M are stamped by Newton each iteration |
+| `tran.step` RHS (sources at t) | – | hist | hist | ✓ | ✓ | – | – | – | – | – | – | a third, smaller copy of the source RHS logic; C/L history currents are transient-only by design |
+| `ac._diode_solver` (small-signal) | via build | via build | via build | via build | via build | ✓ | ✓ | via build | via build | via build | via build | separate loops: diodes then MOSFETs, each with its own bias extraction |
+| `newton._newton` (per-iteration linearisation) | – | – | – | – | – | ✓ | ✓ | – | – | – | – | device-specific limiting and residual checks; by design |
+| `circuit.branch_elements` | – | – | ✓ | ✓ | – | – | – | ✓ | – | – | ✓ | extra unknown = current through a voltage-defined branch |
+| `circuit.element_nodes` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| `mna.check_topology` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | conduction / voltage-loop rules per type |
+| `tran._frozen_state_system` | – | ✓ | ✓ | – | – | – | – | – | – | – | – | holds C as a V source and L as an I source; by design |
+| `adaptive.breakpoints`, `tran._warn_if_edges_unresolved` | – | – | – | ✓ | ✓ | – | – | – | – | – | – | only sources have waveforms |
+| `web_api._dc` | – | – | – | ✓ | ✓ | – | – | – | – | – | – | sweep unit V or A |
+
+Findings: two real duplications (`mna.build` vs `tran.matrix`, and the source RHS in `mna.build` vs `tran.step`), one bug (MOSFET in `mna.build`),
+and a third dispatch in `ac._diode_solver`. The remaining sites are per-type *rules* (topology, nodes, waveforms), not stamping, and stay where they are.
+
+## D40: One stamping path: a registry of functions, not methods on the element classes (Phase 2)
+- **Choice:** `elements.STAMPS: dict[type, Stamp]`. Each `Stamp` splits an element's contribution by what it depends on:
+  `matrix(A, idx, rows, e, s)` (s = 0 at DC, jω at AC, 1/h or 2/h in a transient: never time or the solution),
+  `rhs(b, idx, rows, e, value)` (independent sources), `newton` (linearised per iteration by `_newton`), and
+  `small_signal(idx, e, x_bias) -> stamp(A)` (a nonlinear device's AC model, linearised once per sweep).
+  `mna.stamp_matrix` / `mna.stamp_sources` are the only loops over elements; `mna.build`, `tran`'s companion matrix (still factored
+  once per step size, cache of 64 kept), `tran`'s per-step RHS and `ac`'s small-signal path all go through them.
+- **Alternatives:** methods on the dataclasses (`Resistor.stamp_matrix(...)`); `functools.singledispatch`.
+- **Why:** `circuit.py` is plain data and CLAUDE.md keeps stamps in `elements.py` (one function per element, with the stamp
+  pattern in its docstring); methods would split that across two files or move the numpy code into the data model.
+  A plain dict is explicit, easy to enumerate in a test, and a missing entry is a `TypeError` instead of a silent no-op.
+  The original `stamp_*` functions are kept unchanged (their hand-checked unit tests still apply); the registry wraps them.
+- **Kept outside the registry (by design):** C/L history currents of the companion models (they belong to the integration method and
+  exist only in `tran`); `_newton`'s device-specific limiting and residual checks (now guarded by `NEWTON_DEVICES`); topology rules.
+- **Guard:** `tests/test_stamp_registry.py` (every parser letter -> class -> registry entry valid for every analysis; an unregistered class raises).
+  Checked by deleting the CCVS entry: two tests fail.
+
+## D41: Performance check method
+The 10% budget is judged on a same-session A/B (old `src/` from `git archive` vs new, alternated, best of N), because the stand-alone
+benchmark moved by up to 39% between runs on an idle machine. Result: every workload within ±6% (table in REPORT.md). The registry lookup is
+inlined on the assembly path (`STAMPS.get(type(e))`); per-step RHS functions are resolved once before the time loop.
+
+## D42: MOSFET capacitances as hidden linear capacitors (Phase 3)
+- **Choice:** `Stamp.expand` (new registry hook; the diode's RS expansion moved there too) turns a MOSFET into itself plus
+  `Capacitor("<name>#cgs" ...)` elements: Cgs = CGSO W, Cgd = CGDO W, Cgb = CGBO L (ngspice's scaling with LD = 0), Cbd = CBD,
+  Cbs = CBS. Zero values add nothing, so a model without capacitances is exactly the M8 device (bit-for-bit test + goldens).
+- **Alternatives:** a MOSFET-specific companion stamp in `tran` and a jωC stamp in `ac` (two new code paths, the duplication this
+  run removed); full Meyer charge model (needs TOX and region-dependent charge partitioning, out of scope).
+- **Why:** capacitors already have one stamp, one companion model, history currents and `.ic` handling; reusing them means AC and both
+  transient modes are correct by construction. Only the overlap terms are compared with ngspice: with CBD/CBS set ngspice applies the
+  depletion law, which this version does not (README limitation, `shortcut:` note in elements.py).
+- **The inverter example is driven through 1k.** With the gate on an ideal source, the PMOS Cgs sits between two ideal sources and
+  fixed-step trapezoidal integration rings undamped on its current (alternating 2.4 / 0.6 mA around ngspice's 1.6 mA: 11 % of peak
+  on i(vdd)); 50 ohm damps the ringing but leaves the RC (6 ps) under-resolved by the 12.5 ps step; 1k (tau ~ 120 ps) is resolved:
+  worst 4.4e-4 of peak, tolerance 2e-3. Fixing the integrator (a backward-Euler step after each corner) would change existing results,
+  which this run forbids; recorded as a README limitation and a next step.
+
+## D43: Parallel capacitors with uic (bug found in Phase 3, present on main)
+`_frozen_state_system` held each capacitor as a voltage source, so two capacitors on the same node pair were a "loop of voltage
+sources" and `.tran ... uic` failed. Fix: one held source per node pair; its current is split by capacitance (same dv/dt), with the
+sign flipped for a reversed one. A single capacitor per node pair goes through the same code with ratio 1, so existing results are
+unchanged (goldens). A capacitor directly across a voltage source with uic is still an error: the two can disagree (inconsistent .ic).
+
+## D44: Report naming (refactor run)
+The web UI report moves to `REPORT_WEB.md`; `REPORT.md` stays the latest run, as with `REPORT_M5_M7.md` and `REPORT_M8_M9.md`.

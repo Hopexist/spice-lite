@@ -88,7 +88,7 @@ the executable.
 | | |
 |---|---|
 | Elements | `R`, `C`, `L`, `D` (diode), `V` and `I` (DC, `AC mag [phase_deg]`, `PULSE(...)`, `SIN(...)`), controlled sources `E` (VCVS), `G` (VCCS), `F` (CCCS), `H` (CCVS); an op-amp is an `E` with gain 1e6; `M` (level-1 MOSFET) |
-| Models | `.model name D(IS=.. N=.. RS=..)`, `.model name NMOS\|PMOS(LEVEL=1 VTO=.. KP=.. LAMBDA=.. GAMMA=.. PHI=..)` |
+| Models | `.model name D(IS=.. N=.. RS=..)`, `.model name NMOS\|PMOS(LEVEL=1 VTO=.. KP=.. LAMBDA=.. GAMMA=.. PHI=.. CGSO=.. CGDO=.. CGBO=.. CBD=.. CBS=..)` |
 | Directives | `.op`, `.dc source start stop step`, `.ac dec\|oct\|lin`, `.tran tstep tstop [uic]`, `.ic v(node)=value`, `.options method=trap\|be step=fixed\|adaptive`, `.end` |
 | Values | SI suffixes `f p n u m k meg g t`, case-insensitive (`m` = milli, `meg` = mega) |
 | Linear circuits | one direct solve (DC), one solve per frequency (AC), LU factored once (transient); dense LAPACK for small circuits, sparse SuperLU from 60 unknowns up (`--solver` / `solver=` override) |
@@ -103,9 +103,14 @@ Anything else raises a `NetlistError` with the line number. Known limitations:
   time (a zero-rise jump leaves the trapezoidal history stale for one step).
 * The op-amp model has a flat gain at every frequency (no gain-bandwidth limit, slew rate, saturation or
   input/output impedance); an `F`/`H` can only sense a `V` source's current.
-* MOSFETs are level 1 only and have no intrinsic capacitances (Cgs, Cgd, Cgb, Cbd, Cbs) and no bulk-junction diodes
-  beyond their GMIN conductance: the switching delay of a CMOS stage comes only from the load capacitor you add, and a
-  bulk biased more than ~0.6 V above a channel terminal does not conduct as it does in ngspice.
+* MOSFETs are level 1 only. Their capacitances are the LINEAR overlap ones (`CGSO`, `CGDO`, `CGBO`) and fixed-value
+  junction capacitances (`CBD`, `CBS`): no Meyer gate capacitance (no `TOX`, so channel charge is not modelled) and no
+  depletion law Cj(V) for the junctions (ngspice applies one when `CBD`/`CBS` are given, so only the overlap terms are
+  compared with it). The bulk-junction diodes are still just their GMIN conductance: a bulk biased more than ~0.6 V
+  above a channel terminal does not conduct as it does in ngspice.
+* Fixed-step trapezoidal rings (sample-to-sample oscillation) on a capacitor current when the capacitor sits directly
+  between ideal voltage sources and a source has a corner; the voltages are fine. Drive such nodes through a resistance
+  (as `cmos_inverter_overlap.cir` does) or use `method=be`.
 * `.ic` only sets capacitor voltages (a node with no capacitor on it is rejected) and is only used
   with `uic`; without `uic` an `.ic` line is an error rather than being silently ignored.
 * A loop made only of voltage sources and capacitors (or inductors and current sources only) has no
@@ -249,7 +254,7 @@ Against ngspice: linear DC and `.dc` agree exactly, AC to 3e-15 relative, and tr
 
 ## MOSFETs (level 1, Shichman-Hodges)
 
-`M name drain gate source bulk model [W=..] [L=..]` with `.model name NMOS|PMOS (LEVEL=1 VTO KP LAMBDA GAMMA PHI)`
+`M name drain gate source bulk model [W=..] [L=..]` with `.model name NMOS|PMOS (LEVEL=1 VTO KP LAMBDA GAMMA PHI CGSO CGDO CGBO CBD CBS)`
 (W and L default to ngspice's 100 um; VTO keeps its natural sign, so an enhancement PMOS has `VTO=-1`). With
 beta = KP W/L, Vov = Vgs - Vth and Vth = VTO + GAMMA (sqrt(PHI - Vbs) - sqrt(PHI)):
 

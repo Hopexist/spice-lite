@@ -10,6 +10,8 @@ at DC a capacitor (admittance s*C = 0) vanishes and an inductor's row becomes v+
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -101,13 +103,7 @@ def stamp_voltage_source(A: np.ndarray, b: np.ndarray, idx: dict[str, int],
           n-  [   0    0   -1 |  0 ]
           row [  +1   -1    0 |  V ]
     """
-    p, q = idx.get(v.n_plus), idx.get(v.n_minus)
-    if p is not None:
-        A[p, row] += 1.0
-        A[row, p] += 1.0
-    if q is not None:
-        A[q, row] -= 1.0
-        A[row, q] -= 1.0
+    _stamp_voltage_output(A, idx, row, v.n_plus, v.n_minus)
     b[row] += v.dc if value is None else value
 
 
@@ -245,11 +241,12 @@ def stamp_ccvs(A: np.ndarray, idx: dict[str, int], row: int, sense_row: int, e: 
 
 
 # ---- MOSFET, level 1 (Shichman-Hodges) ----------------------------------------------------------
-# shortcut: no intrinsic capacitances (Cgs, Cgd, Cgb, Cbd, Cbs) and the bulk-drain / bulk-source junction
-# diodes are reduced to their GMIN conductance (no exponential, no leakage current, no forward
-# conduction when the bulk is biased more than ~0.6 V above a channel terminal). The device is a
-# voltage-controlled current source plus those two tiny conductances; circuits add explicit load caps.
-# Upgrade when a transient needs gate charge (the inverter's switching delay is then underestimated).
+# Capacitances: the overlap capacitances (CGSO, CGDO per width, CGBO per length) and the bulk junction capacitances
+# (CBD, CBS) are LINEAR capacitors between the terminals; Stamp.expand turns them into ordinary Capacitor elements, so
+# the transient (companion model) and AC (j*omega*C) pick them up through the shared capacitor stamp.
+# shortcut: no Meyer gate capacitances (they need TOX and depend on the operating region) and CBD / CBS are fixed values,
+# not the depletion law Cj(V) = Cj0 / (1 - V/PB)^MJ; the bulk junction diodes stay reduced to their GMIN conductance (no
+# forward conduction). Upgrade to Meyer + depletion charge when a circuit's timing depends on gate charge beyond overlap.
 
 
 def mos_threshold(m: MosModel, vbs: float) -> float:
@@ -359,3 +356,94 @@ def stamp_mosfet_small_signal(A: np.ndarray, idx: dict[str, int], e: Mosfet,
     stamp as Newton uses, without the constant current Ieq."""
     _i, gm, gds, gmbs, reverse, _v = mos_eval(e, vgs, vds, vbs)
     _stamp_mos_g(A, idx, e, reverse, gm, gds, gmbs)
+
+
+# ---- the registry: how each element type enters each analysis -------------------------------------
+# Every analysis assembles its system through STAMPS (via mna.stamp_matrix / mna.stamp_sources), so an
+# element type has exactly one entry point here and cannot be stamped in one analysis and forgotten
+# in another. tests/test_stamp_registry.py fails if an element the parser can produce is missing.
+
+@dataclass(frozen=True)
+class Stamp:
+    """One element type's ways into MNA, split by what they depend on.
+
+    matrix(A, idx, rows, e, s): the part of A that depends only on s, the complex frequency at AC, 0 at DC,
+        and the companion-model coefficient 1/h (backward Euler) or 2/h (trapezoidal) in a transient. It does
+        not depend on time or on the solution, so a transient can build and factor it once per step size.
+    rhs(b, idx, rows, e, value): an independent source's value (DC, AC phasor or waveform at t) in b.
+    newton: a nonlinear device, linearised at every Newton iteration by analysis.newton._newton instead.
+    small_signal(idx, e, x_bias) -> stamp(A): a nonlinear device's AC model, linearised once at the DC bias
+        x_bias; the returned function is then applied at every frequency.
+    expand(e) -> [elements]: a device modelled as itself plus hidden linear parts (a diode's series resistance,
+        a MOSFET's capacitances). The result must be a fixed point: expanding it again adds nothing.
+    The transient history currents of C and L (their companion-model sources) live in analysis.tran:
+    they are the integration method, not the element, and only the transient has them.
+    """
+    matrix: Callable | None = None
+    rhs: Callable | None = None
+    newton: bool = False
+    small_signal: Callable | None = None
+    expand: Callable | None = None  # e -> list of elements that model it (hidden parts added before any analysis)
+
+
+def _source_rhs_v(b, idx, rows, e: VoltageSource, value) -> None:
+    b[rows[e.name]] += value  # the constraint row v(n+) - v(n-) = V
+
+
+def _diode_small_signal(idx, d: Diode, x):
+    p, q = idx.get(d.anode), idx.get(d.cathode)
+    g = diode_iv(d.model, (x[p] if p is not None else 0.0) - (x[q] if q is not None else 0.0))[1]
+    return lambda A: stamp_diode_small_signal(A, idx, d, g)
+
+
+def _mosfet_small_signal(idx, m: Mosfet, x):
+    vd, vg, vs, vb = (x[idx[n]] if n in idx else 0.0 for n in (m.drain, m.gate, m.source, m.bulk))
+    return lambda A: stamp_mosfet_small_signal(A, idx, m, vg - vs, vd - vs, vb - vs)
+
+
+def _expand_diode(d: Diode) -> list:
+    """RS > 0: a hidden internal node; the resistor runs anode -> "<name>#int", the junction "<name>#int" -> cathode."""
+    if d.model.RS <= 0:
+        return [d]
+    mid = f"{d.name}#int"
+    return [Resistor(f"{d.name}#rs", d.anode, mid, d.model.RS),
+            Diode(d.name, mid, d.cathode, d.model_name, replace(d.model, RS=0.0))]  # RS now lives in the resistor
+
+
+def _expand_mosfet(m: Mosfet) -> list:
+    """The level-1 capacitances as linear capacitors "<name>#cgs" ...; a zero one is left out (so a model without
+    capacitances is exactly the M8 device). The device keeps a capacitance-free copy of its model (a fixed point)."""
+    md = m.model
+    caps = [("cgs", m.gate, m.source, md.CGSO * m.W), ("cgd", m.gate, m.drain, md.CGDO * m.W),
+            ("cgb", m.gate, m.bulk, md.CGBO * m.L), ("cbd", m.bulk, m.drain, md.CBD), ("cbs", m.bulk, m.source, md.CBS)]
+    if not any(c for *_, c in caps):
+        return [m]
+    bare = replace(m, model=replace(md, CGSO=0.0, CGDO=0.0, CGBO=0.0, CBD=0.0, CBS=0.0))
+    return [bare] + [Capacitor(f"{m.name}#{tag}", n1, n2, c) for tag, n1, n2, c in caps if c > 0]
+
+
+STAMPS: dict[type, Stamp] = {
+    Resistor: Stamp(matrix=lambda A, idx, rows, e, s: stamp_resistor(A, idx, e)),
+    Capacitor: Stamp(matrix=lambda A, idx, rows, e, s: stamp_capacitor(A, idx, e, s)),
+    Inductor: Stamp(matrix=lambda A, idx, rows, e, s: stamp_inductor(A, idx, rows[e.name], e, s)),
+    VoltageSource: Stamp(matrix=lambda A, idx, rows, e, s: _stamp_voltage_output(A, idx, rows[e.name], e.n_plus, e.n_minus),
+                         rhs=_source_rhs_v),
+    CurrentSource: Stamp(matrix=lambda A, idx, rows, e, s: None,  # no matrix entries: it only injects current
+                         rhs=lambda b, idx, rows, e, value: stamp_current_source(b, idx, e, value)),
+    # controlled sources are memoryless: the same constant entries at DC, every frequency and every time step
+    VCVS: Stamp(matrix=lambda A, idx, rows, e, s: stamp_vcvs(A, idx, rows[e.name], e)),
+    VCCS: Stamp(matrix=lambda A, idx, rows, e, s: stamp_vccs(A, idx, e)),
+    CCCS: Stamp(matrix=lambda A, idx, rows, e, s: stamp_cccs(A, idx, rows[e.sense], e)),
+    CCVS: Stamp(matrix=lambda A, idx, rows, e, s: stamp_ccvs(A, idx, rows[e.name], rows[e.sense], e)),
+    Diode: Stamp(newton=True, small_signal=_diode_small_signal, expand=_expand_diode),
+    Mosfet: Stamp(newton=True, small_signal=_mosfet_small_signal, expand=_expand_mosfet),
+}
+
+
+def stamp_of(e) -> Stamp:
+    """The registry entry for an element; a type nobody registered is an error, never a silent no-op."""
+    try:
+        return STAMPS[type(e)]
+    except KeyError:
+        raise TypeError(f"{getattr(e, 'name', e)!r}: no MNA stamp registered for {type(e).__name__} "
+                        "(add it to elements.STAMPS)") from None

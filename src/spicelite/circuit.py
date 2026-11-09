@@ -231,9 +231,11 @@ class CCVS:
 
 @dataclass
 class MosModel:
-    """`.model name NMOS|PMOS (LEVEL=1 VTO=.. KP=.. LAMBDA=.. GAMMA=.. PHI=..)`, Shichman-Hodges.
-    Defaults are ngspice's: VTO 0 V, KP 2e-5 A/V^2, LAMBDA 0 1/V, GAMMA 0 sqrt(V), PHI 0.6 V.
-    VTO is written with its natural sign (negative for an enhancement PMOS), as in ngspice."""
+    """`.model name NMOS|PMOS (LEVEL=1 VTO=.. KP=.. LAMBDA=.. GAMMA=.. PHI=.. CGSO=.. CGDO=.. CGBO=.. CBD=.. CBS=..)`,
+    Shichman-Hodges. Defaults are ngspice's: VTO 0 V, KP 2e-5 A/V^2, LAMBDA 0 1/V, GAMMA 0 sqrt(V), PHI 0.6 V,
+    every capacitance 0. VTO is written with its natural sign (negative for an enhancement PMOS), as in ngspice.
+    Capacitances (all linear): CGSO / CGDO gate-source / gate-drain overlap per metre of channel WIDTH (F/m),
+    CGBO gate-bulk overlap per metre of channel LENGTH (F/m), CBD / CBS bulk-drain / bulk-source junctions (F)."""
 
     name: str
     kind: str  # "nmos" or "pmos"
@@ -242,10 +244,17 @@ class MosModel:
     LAMBDA: float = 0.0
     GAMMA: float = 0.0
     PHI: float = 0.6
+    CGSO: float = 0.0
+    CGDO: float = 0.0
+    CGBO: float = 0.0
+    CBD: float = 0.0
+    CBS: float = 0.0
 
     def __post_init__(self) -> None:
         if self.KP <= 0 or self.PHI <= 0 or self.GAMMA < 0 or self.LAMBDA < 0:
             raise ValueError("MOS model needs KP > 0, PHI > 0, GAMMA >= 0 and LAMBDA >= 0")
+        if min(self.CGSO, self.CGDO, self.CGBO, self.CBD, self.CBS) < 0:
+            raise ValueError("MOS capacitances CGSO, CGDO, CGBO, CBD and CBS must be >= 0")
 
     @property
     def sign(self) -> int:
