@@ -8,3 +8,7 @@ dist/
 # generated ngspice output
 *.raw
 *.out
+
+web/node_modules/
+web/dist/
+web/public/wheels/

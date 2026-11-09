@@ -164,3 +164,19 @@ Each entry: choice, alternatives, why.
 ## D29. Audit fixes
 - magnitude_db returns -inf for an exact zero without a numpy warning (a supply rail has no AC signal); the CLI had been printing the warning.
 - The report from the M5-M7 run was renamed REPORT_M5_M7.md; REPORT.md is the M8-M9 report.
+
+# Web UI run (branch `web-ui`)
+
+## D30. Pyodide route is GO; pinned to Pyodide 314.0.7 (Python 3.14.2, numpy 2.4.6, scipy 1.18.0)
+- spicelite declares requires-python >=3.10 with no upper cap and uses only numpy and scipy (linalg, sparse) on the web path.
+  `import spicelite` and the analyses do not import matplotlib, the subprocess-based ngspice runner, plotting or cli (checked via sys.modules), so no
+  code change was needed for the "no CLI-only imports on the web path" requirement.
+- **Install method:** the pure-Python wheel built with `pip wheel . --no-deps` is unpacked with `pyodide.unpackArchive(Uint8Array, "wheel")` after
+  `loadPackage(["numpy", "scipy"])`. Alternative: micropip (also works, costs an extra package download and resolves dependencies we do not want:
+  matplotlib is in the wheel metadata). A Node Buffer must be converted to a Uint8Array first (Pyodide rejects it).
+- **Where Pyodide is served from:** the jsdelivr CDN at the pinned version URL, not self-hosted (the wasm plus numpy plus scipy are tens of MB, and Pages
+  repo size and deploy time would balloon). The npm `pyodide` package is a dev dependency used for TypeScript types and the headless Node tests.
+  Risk: first load needs the CDN; the browser caches it afterwards.
+
+## D31. Dev tooling
+- Node 26 / npm 11 are available; Vite and Playwright are installable from npm (network works), so the frontend is Vite + TypeScript.
