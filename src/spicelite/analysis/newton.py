@@ -29,6 +29,7 @@ from ..mna import build, check_topology
 RELTOL, ABSTOL, VNTOL = 1e-6, 1e-14, 1e-9
 MAX_ITER = 100  # per Newton run; ngspice's ITL1 is also 100
 GMIN_STAGES = [10.0**-k for k in range(2, 13)] + [0.0]  # 1e-2 ... 1e-12, then none
+NEWTON_DEVICES = (Diode, Mosfet)  # the device types _newton linearises; anything else registered as newton is an error
 
 
 @dataclass
@@ -139,6 +140,8 @@ def _newton(A_lin, b_lin, idx, n, devices, names, x_start, gshunt, max_iter, rel
     """Plain Newton from x_start over the nonlinear `devices` (diodes and MOSFETs).
     Returns (x, iterations) or raises ConvergenceError."""
     size = len(b_lin)
+    if unknown := [d.name for d in devices if not isinstance(d, NEWTON_DEVICES)]:
+        raise TypeError(f"no Newton linearisation for {', '.join(unknown)}")
     diodes = [d for d in devices if isinstance(d, Diode)]
     mosfets = [d for d in devices if isinstance(d, Mosfet)]
     pa = [idx.get(d.anode) for d in diodes]

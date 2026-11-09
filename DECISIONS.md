@@ -261,3 +261,25 @@ Every place the code branches on element type, and what it handles (✓ handled,
 
 Findings: two real duplications (`mna.build` vs `tran.matrix`, and the source RHS in `mna.build` vs `tran.step`), one bug (MOSFET in `mna.build`),
 and a third dispatch in `ac._diode_solver`. The remaining sites are per-type *rules* (topology, nodes, waveforms), not stamping, and stay where they are.
+
+## D40: One stamping path: a registry of functions, not methods on the element classes (Phase 2)
+- **Choice:** `elements.STAMPS: dict[type, Stamp]`. Each `Stamp` splits an element's contribution by what it depends on:
+  `matrix(A, idx, rows, e, s)` (s = 0 at DC, jω at AC, 1/h or 2/h in a transient: never time or the solution),
+  `rhs(b, idx, rows, e, value)` (independent sources), `newton` (linearised per iteration by `_newton`), and
+  `small_signal(idx, e, x_bias) -> stamp(A)` (a nonlinear device's AC model, linearised once per sweep).
+  `mna.stamp_matrix` / `mna.stamp_sources` are the only loops over elements; `mna.build`, `tran`'s companion matrix (still factored
+  once per step size, cache of 64 kept), `tran`'s per-step RHS and `ac`'s small-signal path all go through them.
+- **Alternatives:** methods on the dataclasses (`Resistor.stamp_matrix(...)`); `functools.singledispatch`.
+- **Why:** `circuit.py` is plain data and CLAUDE.md keeps stamps in `elements.py` (one function per element, with the stamp
+  pattern in its docstring); methods would split that across two files or move the numpy code into the data model.
+  A plain dict is explicit, easy to enumerate in a test, and a missing entry is a `TypeError` instead of a silent no-op.
+  The original `stamp_*` functions are kept unchanged (their hand-checked unit tests still apply); the registry wraps them.
+- **Kept outside the registry (by design):** C/L history currents of the companion models (they belong to the integration method and
+  exist only in `tran`); `_newton`'s device-specific limiting and residual checks (now guarded by `NEWTON_DEVICES`); topology rules.
+- **Guard:** `tests/test_stamp_registry.py` (every parser letter -> class -> registry entry valid for every analysis; an unregistered class raises).
+  Checked by deleting the CCVS entry: two tests fail.
+
+## D41: Performance check method
+The 10% budget is judged on a same-session A/B (old `src/` from `git archive` vs new, alternated, best of N), because the stand-alone
+benchmark moved by up to 39% between runs on an idle machine. Result: every workload within ±6% (table in REPORT.md). The registry lookup is
+inlined on the assembly path (`STAMPS.get(type(e))`); per-step RHS functions are resolved once before the time loop.

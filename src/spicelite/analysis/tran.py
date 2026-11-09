@@ -38,33 +38,18 @@ import numpy as np
 from scipy.linalg import lu_factor, lu_solve
 
 from ..circuit import (
-    CCCS,
-    CCVS,
-    VCCS,
-    VCVS,
     Capacitor,
     Circuit,
     ConvergenceError,
     CurrentSource,
     Inductor,
     Pulse,
-    Resistor,
     SingularCircuitError,
     TranSpec,
     VoltageSource,
 )
-from ..elements import (
-    stamp_capacitor,
-    stamp_cccs,
-    stamp_ccvs,
-    stamp_current_source,
-    stamp_inductor,
-    stamp_resistor,
-    stamp_vccs,
-    stamp_vcvs,
-    stamp_voltage_source,
-)
-from ..mna import check_topology, solve
+from ..elements import stamp_of
+from ..mna import check_topology, solve, stamp_matrix
 from ..sparse import Triplets, check_solver, factor, use_sparse
 from .adaptive import StepControl, adaptive_loop, breakpoints
 from .newton import ABSTOL, MAX_ITER, RELTOL, VNTOL, _expand, _newton, solve_nonlinear
@@ -161,7 +146,7 @@ def tran(circuit: Circuit, spec: TranSpec | None = None, method: str | None = No
     names = list(idx) + [f"i({e.name})" for e in branches]
     caps = [e for e in ex.elements if isinstance(e, Capacitor)]
     inds = [e for e in ex.elements if isinstance(e, Inductor)]
-    sources = [e for e in ex.elements if isinstance(e, (VoltageSource, CurrentSource))]
+    sources = [(st.rhs, e) for e in ex.elements if (st := stamp_of(e)).rhs is not None]  # looked up once, not per step
 
     def vdiff(x: np.ndarray, n1: str, n2: str) -> float:
         p, q = idx.get(n1), idx.get(n2)
@@ -176,24 +161,8 @@ def tran(circuit: Circuit, spec: TranSpec | None = None, method: str | None = No
             s = (2.0 if trap else 1.0) / hh
             sparse = not diodes and use_sparse(size, solver)
             A = Triplets(size, float) if sparse else np.zeros((size, size))
-            scratch = np.zeros(size)  # V-source stamps write b: unused
-            for e in ex.elements:
-                if isinstance(e, Resistor):
-                    stamp_resistor(A, idx, e)
-                elif isinstance(e, Capacitor):
-                    stamp_capacitor(A, idx, e, s)
-                elif isinstance(e, Inductor):
-                    stamp_inductor(A, idx, row_of[e.name], e, s)
-                elif isinstance(e, VoltageSource):
-                    stamp_voltage_source(A, scratch, idx, row_of[e.name], e, 0.0)
-                elif isinstance(e, VCVS):  # controlled sources are memoryless: they add to the
-                    stamp_vcvs(A, idx, row_of[e.name], e)  # constant matrix and nothing to the history
-                elif isinstance(e, VCCS):
-                    stamp_vccs(A, idx, e)
-                elif isinstance(e, CCCS):
-                    stamp_cccs(A, idx, row_of[e.sense], e)
-                elif isinstance(e, CCVS):
-                    stamp_ccvs(A, idx, row_of[e.name], row_of[e.sense], e)
+            # the shared stamps with s = 1/h or 2/h: C and L become their companion conductances
+            stamp_matrix(A, idx, row_of, ex.elements, s, nonlinear_ok=True)
             lu = None
             if sparse:
                 A = A.tocsc()
@@ -210,11 +179,8 @@ def tran(circuit: Circuit, spec: TranSpec | None = None, method: str | None = No
         A, lu = matrix(hh)
         s = (2.0 if trap else 1.0) / hh
         b = np.zeros(size)
-        for e in sources:
-            if isinstance(e, VoltageSource):
-                b[row_of[e.name]] += e.at(t_new)
-            else:
-                stamp_current_source(b, idx, e, e.at(t_new))
+        for rhs, e in sources:
+            rhs(b, idx, row_of, e, e.at(t_new))
         for j, c in enumerate(caps):  # history current injected into n1, drawn from n2
             hist = s * c.value * vdiff(x, c.n1, c.n2) + (cap_i[j] if trap else 0.0)
             p, q = idx.get(c.n1), idx.get(c.n2)

@@ -38,6 +38,7 @@ _STEP = re.compile(r"step=(fixed|adaptive)")
 _MODEL = re.compile(r"\.model\s+(\S+)\s+([a-z]+)\s*\(?([^)]*)\)?\s*$")
 _MODEL_PARAMS = ("is", "n", "rs")
 _MOS_PARAMS = ("level", "vto", "kp", "lambda", "gamma", "phi")
+ELEMENT_LETTERS = "rclvidegfhm"  # every element type a netlist may contain (first letter of its name)
 _TWO_TERMINAL = {"r": (Resistor, "resistance"), "c": (Capacitor, "capacitance"),
                  "l": (Inductor, "inductance")}
 
@@ -292,7 +293,7 @@ def parse(text: str) -> Circuit:
                 continue
             raise NetlistError(f"unsupported directive {name!r}", num)
         kind = name[0]
-        if kind not in "rclvidegfhm":
+        if kind not in ELEMENT_LETTERS:
             raise NetlistError(f"unsupported element {name!r}", num)
         if name in seen:
             raise NetlistError(f"duplicate element name {name!r}", num)

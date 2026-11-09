@@ -14,26 +14,12 @@ from .circuit import (
     Capacitor,
     Circuit,
     CurrentSource,
-    Diode,
     Inductor,
-    Mosfet,
     OpenLoopWarning,
-    Resistor,
     SingularCircuitError,
-    VoltageSource,
     element_nodes,
 )
-from .elements import (
-    stamp_capacitor,
-    stamp_cccs,
-    stamp_ccvs,
-    stamp_current_source,
-    stamp_inductor,
-    stamp_resistor,
-    stamp_vccs,
-    stamp_vcvs,
-    stamp_voltage_source,
-)
+from .elements import STAMPS, stamp_of
 from .sparse import Triplets, factor, use_sparse
 
 
@@ -42,44 +28,44 @@ def build(circuit: Circuit, omega: float | None = None, t: float | None = None,
     """Return (A, b). omega=None builds the real DC system (C open, L a 0 V source) with
     sources at their DC value, or at their waveform value at time t if t is given (the
     initial condition of .tran); otherwise the complex system at s = j*omega (sources use
-    their AC phasor). Size is n_nodes + n_branches. Diodes are skipped only when the Newton
+    their AC phasor). Size is n_nodes + n_branches. Diodes and MOSFETs are skipped only when the Newton
     solver asks (nonlinear_ok): it stamps their companion models itself. `solver` ("dense",
     "sparse" or "auto") picks the storage of A: a numpy array, or a scipy CSC matrix (b is
     always a dense vector)."""
     ac = omega is not None
-    s = 1j * omega if ac else 0.0
     idx = circuit.node_index()
     branches = circuit.branch_elements()
-    row_of = {e.name: len(idx) + k for k, e in enumerate(branches)}
+    rows = {e.name: len(idx) + k for k, e in enumerate(branches)}
     size = len(idx) + len(branches)
     dtype = complex if ac else float
     sparse = use_sparse(size, solver)
     A = Triplets(size, dtype) if sparse else np.zeros((size, size), dtype=dtype)
     b = np.zeros(size, dtype=dtype)
-    for e in circuit.elements:
-        if isinstance(e, Resistor):
-            stamp_resistor(A, idx, e)
-        elif isinstance(e, Capacitor):
-            stamp_capacitor(A, idx, e, s)
-        elif isinstance(e, Inductor):
-            stamp_inductor(A, idx, row_of[e.name], e, s)
-        elif isinstance(e, VoltageSource):
-            stamp_voltage_source(A, b, idx, row_of[e.name], e, e.ac if ac else e.at(t))
-        elif isinstance(e, CurrentSource):
-            stamp_current_source(b, idx, e, e.ac if ac else e.at(t))
-        elif isinstance(e, VCVS):  # controlled sources are memoryless: same stamp at DC, every
-            stamp_vcvs(A, idx, row_of[e.name], e)  # frequency and every time step
-        elif isinstance(e, VCCS):
-            stamp_vccs(A, idx, e)
-        elif isinstance(e, CCCS):
-            stamp_cccs(A, idx, row_of[e.sense], e)
-        elif isinstance(e, CCVS):
-            stamp_ccvs(A, idx, row_of[e.name], row_of[e.sense], e)
-        elif isinstance(e, (Diode, Mosfet)) and not nonlinear_ok:
+    stamp_matrix(A, idx, rows, circuit.elements, 1j * omega if ac else 0.0, nonlinear_ok)
+    stamp_sources(b, idx, rows, circuit.elements, lambda e: e.ac if ac else e.at(t))
+    return (A.tocsc() if sparse else A), b
+
+
+def stamp_matrix(A, idx: dict[str, int], rows: dict[str, int], elements, s: complex,
+                 nonlinear_ok: bool = False) -> None:
+    """Add every element's s-dependent matrix part (elements.STAMPS) to A, in netlist order. A diode or
+    MOSFET has none: the Newton solver (nonlinear_ok) or the small-signal path stamps it, and anywhere
+    else it is an error rather than an element that silently stamps nothing."""
+    for e in elements:
+        st = STAMPS.get(type(e)) or stamp_of(e)  # direct lookup on the assembly path; stamp_of raises for a stranger
+        if st.matrix is not None:
+            st.matrix(A, idx, rows, e, s)
+        elif st.newton and not nonlinear_ok:
             raise NotImplementedError(
                 f"{e.name}: diodes and MOSFETs need the Newton solver or the small-signal path; "
                 "use analysis.dc / analysis.ac / analysis.tran instead of mna.build directly")
-    return (A.tocsc() if sparse else A), b
+
+
+def stamp_sources(b, idx: dict[str, int], rows: dict[str, int], elements, value_of) -> None:
+    """Add every independent source's value to b; value_of(e) picks DC, the AC phasor or the waveform at t."""
+    for e in elements:
+        if (rhs := (STAMPS.get(type(e)) or stamp_of(e)).rhs) is not None:
+            rhs(b, idx, rows, e, value_of(e))
 
 
 def _find(parent: dict[str, str], x: str) -> str:

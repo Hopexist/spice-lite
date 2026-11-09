@@ -56,7 +56,7 @@ Started Mon Nov 9 15:26:52 EST 2026 (per `date`); time box ~2 h (final report by
 |---|---|---|
 | 0. Safety net | done | tests/golden_refactor/: CLI `--csv` output (repr floats) for all 33 examples (51 files) + sparse-solver output for the 21 linear ones (37 files); compared at rtol 1e-12, atol 1e-18 |
 | 1. Audit | done | DECISIONS D39 table; bug: `mna.build` silently dropped MOSFETs (test first, fixed) |
-| 2. Single stamping path | not started | |
+| 2. Single stamping path | done | elements.STAMPS registry (D40); 791 passed; goldens match to 1e-12; A/B timings within ±6% (D41) |
 | 3. MOSFET capacitances | not started | |
 | 4. Audit and report | not started | |
 

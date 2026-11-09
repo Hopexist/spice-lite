@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..circuit import AcSweep, Circuit, SingularCircuitError
-from ..elements import diode_iv, stamp_diode_small_signal, stamp_mosfet_small_signal
+from ..elements import stamp_of
 from ..mna import build, check_topology, solve
 from ..sparse import check_solver
 from .newton import _expand, solve_nonlinear
@@ -31,23 +31,14 @@ def _diode_solver(circuit: Circuit):
     bias = solve_nonlinear(circuit)
     ex = _expand(circuit)
     idx = bias.idx
-    gs = []  # (diode, small-signal conductance at the bias point)
-    for d in ex.diodes():
-        p, q = idx.get(d.anode), idx.get(d.cathode)
-        vd = (bias.x[p] if p is not None else 0.0) - (bias.x[q] if q is not None else 0.0)
-        gs.append((d, diode_iv(d.model, vd)[1]))
-    ms = []  # (MOSFET, Vgs, Vds, Vbs at the bias point)
-    for m in ex.mosfets():
-        vd, vg, vs, vb = (bias.x[idx[n]] if n in idx else 0.0 for n in (m.drain, m.gate, m.source, m.bulk))
-        ms.append((m, vg - vs, vd - vs, vb - vs))
+    # each diode / MOSFET linearised once at the bias, then re-applied at every frequency
+    small = [stamp_of(d).small_signal(idx, d, bias.x) for d in ex.nonlinear()]
     check_topology(ex, dc=False)
 
     def solve_at(omega: float) -> np.ndarray:
         A, b = build(ex, omega, nonlinear_ok=True)
-        for d, g in gs:
-            stamp_diode_small_signal(A, idx, d, g)
-        for m, *v in ms:
-            stamp_mosfet_small_signal(A, idx, m, *v)
+        for stamp in small:
+            stamp(A)
         try:
             return np.linalg.solve(A, b)
         except np.linalg.LinAlgError as err:
