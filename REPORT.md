@@ -76,8 +76,8 @@ values, self-looped resistor, unsupported features with line numbers).
 ## Skipped / not done
 - Op-amp has no bandwidth, slew, saturation or port impedance. The open-loop warning does not see G/F feedback.
 - Sparse does not cover diode circuits (Newton is dense). Source stepping, diode breakdown/capacitance, adaptive time step: not done.
-- No "What I learned" README section and no "How MNA works" worked example check was done beyond the claims above; CLAUDE.md lists both
-  as README requirements, so confirm they exist and are in your voice.
+- **README is missing two sections CLAUDE.md requires: "How MNA works" (one worked example) and "What I learned".** I did not write them: the second
+  must be in your voice, and the first deserves your review. Everything else on the README checklist is present.
 
 ## Suggested next steps
 1. Push the branch and watch the first CI run. 2. `spicelite run --compare` (spicelite vs ngspice) to replace the missing
