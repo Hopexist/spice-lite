@@ -87,8 +87,8 @@ Started Mon Nov 9 16:27:12 EST 2026 (per `date`); time box ~3 h (final report by
 | Phase | State | Notes |
 |---|---|---|
 | 0. Baseline | done | docs/ui-before/: 7 states x 360/1440 x dark/light = 28 shots (web/scripts/shots.mjs, Edge, reduced motion); no console errors |
-| 1. Tools and skills | not started | |
-| 2. Design direction | not started | |
+| 1. Tools and skills | done | DECISIONS D45 (tool table) and D46 (no animation library, measured costs); 3 MIT skills installed in .claude/skills |
+| 2. Design direction | done | A Datasheet chosen 23 vs 18 vs 17 (D47); mark, favicons, palette and type (D48) |
 | 3. Design system | not started | |
 | 4. Motion | not started | |
 | 5. Landing and spec sheets | not started | |
