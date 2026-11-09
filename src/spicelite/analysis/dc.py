@@ -7,6 +7,7 @@ import numpy as np
 
 from ..circuit import Circuit, DcSweep
 from ..mna import solve
+from ..sparse import check_solver
 from .newton import solve_nonlinear
 
 
@@ -26,13 +27,13 @@ class DcSweepResult:
     iterations: np.ndarray  # Newton iterations per point (0 for a linear circuit)
 
 
-def _solve_point(circuit: Circuit, x0: np.ndarray | None):
+def _solve_point(circuit: Circuit, x0: np.ndarray | None, solver: str = "auto"):
     """One DC solution -> (x, node index, iterations, strategy). Linear circuits take the
-    direct path (a single numpy solve); circuits with diodes go through Newton-Raphson."""
+    direct path (one dense or sparse LU solve); circuits with diodes go through Newton-Raphson."""
     if circuit.diodes():
         r = solve_nonlinear(circuit, x0=x0)
         return r.x, r.idx, r.iterations, r.strategy
-    return solve(circuit), circuit.node_index(), 0, "linear"
+    return solve(circuit, solver=solver), circuit.node_index(), 0, "linear"
 
 
 def _unpack(circuit: Circuit, x: np.ndarray, idx: dict[str, int]):
@@ -43,14 +44,17 @@ def _unpack(circuit: Circuit, x: np.ndarray, idx: dict[str, int]):
     return voltages, currents
 
 
-def op(circuit: Circuit) -> OpResult:
-    """DC solve: capacitors open, inductors shorted, diodes by Newton-Raphson."""
-    x, idx, iters, strategy = _solve_point(circuit, None)
+def op(circuit: Circuit, solver: str = "auto") -> OpResult:
+    """DC solve: capacitors open, inductors shorted, diodes by Newton-Raphson.
+    `solver` is "auto", "dense" or "sparse" (see sparse.py)."""
+    check_solver(circuit, solver)
+    x, idx, iters, strategy = _solve_point(circuit, None, solver)
     return OpResult(*_unpack(circuit, x, idx), iters, strategy)
 
 
-def dc_sweep(circuit: Circuit, sweep: DcSweep | None = None) -> DcSweepResult:
+def dc_sweep(circuit: Circuit, sweep: DcSweep | None = None, solver: str = "auto") -> DcSweepResult:
     """Sweep one source's DC value; each point starts Newton from the previous solution."""
+    check_solver(circuit, solver)
     sweep = sweep or circuit.dc
     if sweep is None:
         raise ValueError("no .dc directive in the circuit and no sweep given")
@@ -59,7 +63,7 @@ def dc_sweep(circuit: Circuit, sweep: DcSweep | None = None) -> DcSweepResult:
     for v in values:
         swept = replace(circuit, elements=[replace(e, dc=v) if e.name == sweep.source else e
                                            for e in circuit.elements])
-        x, idx, iters, _ = _solve_point(swept, x)
+        x, idx, iters, _ = _solve_point(swept, x, solver)
         points.append((*_unpack(circuit, x, idx), iters))
     return DcSweepResult(
         values,

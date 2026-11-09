@@ -13,8 +13,7 @@ import math
 
 import numpy as np
 
-from .circuit import (CCCS, CCVS, VCCS, VCVS, Capacitor, CurrentSource, Diode, DiodeModel, Inductor,
-                      Resistor, VoltageSource)
+from .circuit import CCCS, CCVS, VCCS, VCVS, Capacitor, CurrentSource, Diode, DiodeModel, Inductor, Resistor, VoltageSource
 
 # ngspice-41's constants (CODATA 2014) and default 27 C, so Vt = kT/q = 0.0258649170 V matches
 # ngspice digit for digit; GMIN is the conductance SPICE puts across every diode junction.

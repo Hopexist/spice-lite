@@ -7,10 +7,22 @@ from unittest import mock
 
 import numpy as np
 import pytest
-from scipy.linalg import lu_factor, lu_solve
+from scipy.linalg import lu_factor
 
-from spicelite import (CCCS, CCVS, OPAMP_GAIN, VCCS, VCVS, AcSweep, NetlistError, OpenLoopWarning,
-                       Pulse, SingularCircuitError, opamp, parse)
+from spicelite import (
+    CCCS,
+    CCVS,
+    OPAMP_GAIN,
+    VCCS,
+    VCVS,
+    AcSweep,
+    NetlistError,
+    OpenLoopWarning,
+    Pulse,
+    SingularCircuitError,
+    opamp,
+    parse,
+)
 from spicelite.analysis.ac import ac, magnitude_db, phase_degrees
 from spicelite.analysis.dc import dc_sweep, op
 from spicelite.analysis.tran import tran

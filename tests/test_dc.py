@@ -2,8 +2,8 @@ import numpy as np
 import pytest
 
 from spicelite import parse
-from spicelite.circuit import SingularCircuitError
 from spicelite.analysis.dc import op
+from spicelite.circuit import SingularCircuitError
 
 
 def solve(body: str):

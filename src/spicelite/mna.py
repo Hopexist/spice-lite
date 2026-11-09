@@ -5,28 +5,56 @@ import warnings
 
 import numpy as np
 
-from .circuit import (CCCS, CCVS, GROUND, VCCS, VCVS, Capacitor, Circuit, CurrentSource, Diode,
-                      Inductor, OpenLoopWarning, Resistor, SingularCircuitError, VoltageSource,
-                      element_nodes)
-from .elements import (stamp_capacitor, stamp_cccs, stamp_ccvs, stamp_current_source,
-                       stamp_inductor, stamp_resistor, stamp_vccs, stamp_vcvs, stamp_voltage_source)
+from .circuit import (
+    CCCS,
+    CCVS,
+    GROUND,
+    VCCS,
+    VCVS,
+    Capacitor,
+    Circuit,
+    CurrentSource,
+    Diode,
+    Inductor,
+    OpenLoopWarning,
+    Resistor,
+    SingularCircuitError,
+    VoltageSource,
+    element_nodes,
+)
+from .elements import (
+    stamp_capacitor,
+    stamp_cccs,
+    stamp_ccvs,
+    stamp_current_source,
+    stamp_inductor,
+    stamp_resistor,
+    stamp_vccs,
+    stamp_vcvs,
+    stamp_voltage_source,
+)
+from .sparse import Triplets, factor, use_sparse
 
 
 def build(circuit: Circuit, omega: float | None = None, t: float | None = None,
-          nonlinear_ok: bool = False) -> tuple[np.ndarray, np.ndarray]:
+          nonlinear_ok: bool = False, solver: str = "dense") -> tuple[np.ndarray, np.ndarray]:
     """Return (A, b). omega=None builds the real DC system (C open, L a 0 V source) with
     sources at their DC value, or at their waveform value at time t if t is given (the
     initial condition of .tran); otherwise the complex system at s = j*omega (sources use
     their AC phasor). Size is n_nodes + n_branches. Diodes are skipped only when the Newton
-    solver asks (nonlinear_ok): it stamps their companion models itself."""
+    solver asks (nonlinear_ok): it stamps their companion models itself. `solver` ("dense",
+    "sparse" or "auto") picks the storage of A: a numpy array, or a scipy CSC matrix (b is
+    always a dense vector)."""
     ac = omega is not None
     s = 1j * omega if ac else 0.0
     idx = circuit.node_index()
     branches = circuit.branch_elements()
     row_of = {e.name: len(idx) + k for k, e in enumerate(branches)}
     size = len(idx) + len(branches)
-    A = np.zeros((size, size), dtype=complex if ac else float)
-    b = np.zeros(size, dtype=A.dtype)
+    dtype = complex if ac else float
+    sparse = use_sparse(size, solver)
+    A = Triplets(size, dtype) if sparse else np.zeros((size, size), dtype=dtype)
+    b = np.zeros(size, dtype=dtype)
     for e in circuit.elements:
         if isinstance(e, Resistor):
             stamp_resistor(A, idx, e)
@@ -50,7 +78,7 @@ def build(circuit: Circuit, omega: float | None = None, t: float | None = None,
             raise NotImplementedError(
                 f"{e.name}: diodes need the Newton solver or the small-signal path; "
                 "use analysis.dc / analysis.ac / analysis.tran instead of mna.build directly")
-    return A, b
+    return (A.tocsc() if sparse else A), b
 
 
 def _find(parent: dict[str, str], x: str) -> str:
@@ -136,9 +164,14 @@ def _warn_open_loop(circuit: Circuit) -> None:
                 OpenLoopWarning, stacklevel=4)
 
 
-def solve(circuit: Circuit, omega: float | None = None, t: float | None = None) -> np.ndarray:
+def solve(circuit: Circuit, omega: float | None = None, t: float | None = None,
+          solver: str = "auto") -> np.ndarray:
+    """Solve the linear MNA system. solver="auto" goes sparse for large circuits (see
+    sparse.SPARSE_MIN_SIZE); both paths use a direct LU, so they agree to round-off."""
     check_topology(circuit, dc=omega is None)
-    A, b = build(circuit, omega, t)
+    A, b = build(circuit, omega, t, solver=solver)
+    if not isinstance(A, np.ndarray):
+        return factor(A).solve(b)
     try:
         return np.linalg.solve(A, b)
     except np.linalg.LinAlgError as err:  # topology looked fine but the matrix is singular

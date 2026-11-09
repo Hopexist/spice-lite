@@ -1,19 +1,41 @@
 # spice-lite
 
+[![CI](https://github.com/Hopexist/spice-lite/actions/workflows/ci.yml/badge.svg)](https://github.com/Hopexist/spice-lite/actions/workflows/ci.yml)
+
 A small SPICE-style circuit simulator in Python. It parses a subset of the SPICE netlist
 format and solves DC operating point, DC sweep, AC small-signal and transient analyses with
 Modified Nodal Analysis (MNA), using Newton-Raphson for diodes. Results are checked against ngspice.
 
 **Status:** parser, DC, AC, transient, diodes with Newton-Raphson (DC, AC, transient), `.ic`/UIC, and
-controlled sources with op-amps are done. A CLI, sparse solves and CI are next (see the roadmap in `CLAUDE.md`).
+controlled sources with op-amps, a command line, sparse solves and a CI workflow are done (see the roadmap in
+`CLAUDE.md`).
 
 ## Install and quick start
 
 ```
 pip install -e .[dev]
 pytest -q
+spicelite run examples/rc_lowpass.cir --csv out --plot out     # run a netlist: tables, CSV, PNG
 python -m spicelite.plotting      # regenerate the plots in docs/
 ```
+
+## Command line
+
+```
+spicelite run NETLIST [--csv DIR] [--plot DIR] [--solver auto|dense|sparse] [-q]
+spicelite --version | --help
+```
+
+`run` executes every analysis the netlist asks for (`.op`, `.dc`, `.ac`, `.tran`) and prints a table for
+each (long tables show the first and last five rows). `--csv DIR` writes `<netlist>_<analysis>.csv` with every
+row (AC columns are `mag_db(...)` and `phase_deg(...)`), `--plot DIR` writes a PNG per analysis, `-q` suppresses
+the tables. A netlist with no analysis directive runs `.op` and says so on stderr.
+
+| Exit code | Meaning |
+|---|---|
+| 0 | success (warnings, e.g. an open-loop op-amp, go to stderr) |
+| 1 | the netlist or simulation failed: `NetlistError` (with its line number), singular circuit, Newton did not converge |
+| 2 | usage error or unreadable file |
 
 ```python
 from spicelite import parse
@@ -48,7 +70,7 @@ the executable.
 | Models | `.model name D(IS=.. N=.. RS=..)` (only the diode so far) |
 | Directives | `.op`, `.dc source start stop step`, `.ac dec\|oct\|lin`, `.tran tstep tstop [uic]`, `.ic v(node)=value`, `.options method=trap\|be`, `.end` |
 | Values | SI suffixes `f p n u m k meg g t`, case-insensitive (`m` = milli, `meg` = mega) |
-| Linear circuits | one direct solve (DC), one solve per frequency (AC), LU factored once (transient) |
+| Linear circuits | one direct solve (DC), one solve per frequency (AC), LU factored once (transient); dense LAPACK for small circuits, sparse SuperLU from 60 unknowns up (`--solver` / `solver=` override) |
 | Diodes | Newton-Raphson with junction voltage limiting and a gmin-stepping fallback in `.op`/`.dc`; Newton at every step in `.tran` (with step halving); linearised at the bias point in `.ac` |
 | Transient methods | trapezoidal (default, 2nd order) and backward Euler (1st order, damped), fixed step |
 | Initial state | DC solution, or with `uic` the `.ic` capacitor voltages and zero inductor currents |
@@ -199,6 +221,30 @@ match `f0 sqrt(1 - 1/(2Q^2))` and `Q / sqrt(1 - 1/(4Q^2))`.
 
 Against ngspice: linear DC and `.dc` agree exactly, AC to 3e-15 relative, and transient to 1e-5 of peak
 (the O(h^2) trapezoidal error, as for the other RC circuits; the integrator is 5e-7).
+
+## Sparse solves and benchmark
+
+An MNA matrix is mostly zeros (each element touches only its own nodes), so `spicelite.sparse` assembles it as
+(row, col, value) triples (every stamp is a `+=`, so the same stamp functions serve both paths), converts to
+CSC and factors with SuperLU. `solver="auto"` (the default) picks dense below 60 unknowns, where LAPACK on
+a tiny matrix is faster than sparse bookkeeping, and sparse from there on. Dense and sparse give the same answers
+to round-off on every example (`tests/test_sparse.py`, 1e-9 relative). Circuits with diodes stay dense, because the
+Newton loop edits a dense copy of the matrix each iteration; `solver="sparse"` on such a circuit is an error.
+
+`python benchmarks/bench_sparse.py` times a long RC ladder (best of 3, 1 for the largest; assembly included;
+`.tran` is 100 trapezoidal steps, so one factorisation plus 100 back-substitutions). Measured on the
+author's Windows 11 laptop, Python 3.12, scipy 1.18:
+
+| sections | unknowns | .op dense | .op sparse | speed-up | .tran dense | .tran sparse | speed-up |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 100 | 102 | 0.0480 s | 0.0013 s | 37.5x | 0.2205 s | 0.0237 s | 9.3x |
+| 1000 | 1002 | 0.8634 s | 0.0113 s | 76.7x | 2.9051 s | 0.2560 s | 11.3x |
+| 10000 | 10002 | 5.2920 s | 0.1183 s | 44.7x | 43.3431 s | 3.2395 s | 13.4x |
+
+Below about 60 unknowns dense wins or ties (12 unknowns: 0.2 ms dense vs 0.5 ms sparse for `.op`), which is why
+`auto` keeps tiny circuits dense. The ladder is the best case for sparse (a tridiagonal matrix); a circuit
+where every node connects to every other would see little benefit. Timings are noisy at the small end: the
+100-section dense `.op` ranges from 0.01 to 0.05 s between runs, depending on when the BLAS thread pool wakes up.
 
 ## Initial conditions: `.ic` and `uic`
 

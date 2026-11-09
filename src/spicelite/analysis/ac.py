@@ -14,6 +14,7 @@ import numpy as np
 from ..circuit import AcSweep, Circuit, SingularCircuitError
 from ..elements import diode_iv, stamp_diode_small_signal
 from ..mna import build, check_topology, solve
+from ..sparse import check_solver
 from .newton import _expand, solve_nonlinear
 
 
@@ -48,7 +49,8 @@ def _diode_solver(circuit: Circuit):
     return ex, solve_at
 
 
-def ac(circuit: Circuit, sweep: AcSweep | None = None) -> AcResult:
+def ac(circuit: Circuit, sweep: AcSweep | None = None, solver: str = "auto") -> AcResult:
+    check_solver(circuit, solver)
     sweep = sweep or circuit.ac
     if sweep is None:
         raise ValueError("no .ac directive in the circuit and no sweep given")
@@ -58,7 +60,7 @@ def ac(circuit: Circuit, sweep: AcSweep | None = None) -> AcResult:
         X = np.array([solve_at(2 * np.pi * f) for f in freqs])
     else:
         ex = circuit
-        X = np.array([solve(circuit, 2 * np.pi * f) for f in freqs])  # (n_freq, n_unknowns)
+        X = np.array([solve(circuit, 2 * np.pi * f, solver=solver) for f in freqs])  # (n_freq, n_unknowns)
     idx = ex.node_index()
     n = len(idx)
     return AcResult(

@@ -6,9 +6,26 @@ import math
 import re
 from decimal import Decimal
 
-from .circuit import (CCCS, CCVS, VCCS, VCVS, AcSweep, Capacitor, Circuit, CurrentSource, DcSweep,
-                      Diode, DiodeModel, Inductor, NetlistError, Pulse, Resistor, Sin, TranSpec,
-                      VoltageSource)
+from .circuit import (
+    CCCS,
+    CCVS,
+    VCCS,
+    VCVS,
+    AcSweep,
+    Capacitor,
+    Circuit,
+    CurrentSource,
+    DcSweep,
+    Diode,
+    DiodeModel,
+    Inductor,
+    NetlistError,
+    Pulse,
+    Resistor,
+    Sin,
+    TranSpec,
+    VoltageSource,
+)
 
 # "meg" must be tried before "m" (milli), or 1meg would parse as 1 milli.
 _SUFFIX = {"meg": 6, "f": -15, "p": -12, "n": -9, "u": -6, "m": -3, "k": 3, "g": 9, "t": 12}  # powers of 10

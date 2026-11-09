@@ -2,8 +2,7 @@
 import numpy as np
 
 from spicelite.circuit import Capacitor, CurrentSource, Inductor, VoltageSource
-from spicelite.elements import (stamp_capacitor, stamp_current_source, stamp_inductor,
-                                stamp_voltage_source)
+from spicelite.elements import stamp_capacitor, stamp_current_source, stamp_inductor, stamp_voltage_source
 
 
 def test_capacitor_ac_is_admittance_sC():

@@ -93,6 +93,35 @@ def sweep_plot(x: np.ndarray, mine: np.ndarray, path: str | Path, title: str = "
     plt.close(fig)
 
 
+def signals_plot(kind: str, header: list[str], data: np.ndarray, path: str | Path, title: str = "") -> None:
+    """Plot the CLI's result table (column 0 is the x axis) as a PNG. kind: "dc" and "tran" draw
+    every signal against x; "ac" draws magnitude (dB) over phase (deg) against log frequency
+    (the table's mag_db(...) / phase_deg(...) columns)."""
+    x = data[:, 0]
+    if kind == "ac":
+        fig, (ax_m, ax_p) = plt.subplots(2, 1, sharex=True, figsize=(7, 6))
+        for k, name in enumerate(header[1:], start=1):
+            ax = ax_m if name.startswith("mag_db") else ax_p
+            ax.semilogx(x, data[:, k], label=name[name.index("(") + 1:-1])  # "mag_db(v(out))" -> "v(out)"
+        ax_m.set_ylabel("Magnitude (dB)")
+        ax_p.set_ylabel("Phase (deg)")
+        ax_p.set_xlabel("Frequency (Hz)")
+        axes = (ax_m, ax_p)
+    else:
+        fig, ax = plt.subplots(figsize=(7, 4.5))
+        for k, name in enumerate(header[1:], start=1):
+            ax.plot(x, data[:, k], label=name)
+        ax.set_xlabel(header[0])
+        axes = (ax,)
+    axes[0].set_title(title)
+    axes[0].legend(fontsize=8)
+    for ax in axes:
+        ax.grid(True, which="both", alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+
+
 def diode_ringing_demo(path: str | Path) -> None:
     """Half-wave rectifier into a FAST RC (tau = 10 us) with a 50 us step: when the diode turns
     off the output decays much faster than the step. Trapezoidal undershoots below 0 V and rings

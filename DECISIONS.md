@@ -48,3 +48,35 @@ Each entry: choice, alternatives, why.
 - **Choice:** the sense source must be a `V` element; current positive into its + terminal.
 - **Why:** matches ngspice (verified by comparison tests in both orientations); other elements have no
   branch-current unknown to sense.
+
+## D8. A netlist with no analysis directive runs `.op` (with a stderr note)
+- **Choice:** the CLI falls back to `.op` and prints "no analysis directive; running .op".
+- **Alternatives:** exit 1 with an error (ngspice itself just does nothing).
+- **Why:** `divider.cir` and `ladder.cir` have no directive and are natural CLI demos; the note keeps it
+  from being silent. Library calls (`op(...)`) are unaffected.
+
+## D9. Sparse path: triplet assembly, SuperLU, dense for < 60 unknowns and for diodes
+- **Choice:** `Triplets` records `A[i, j] += v` writes so the existing stamps are reused unchanged; CSC +
+  `splu`; `solver="auto"` goes sparse at >= 60 unknowns (benchmark: dense wins or ties below ~60).
+  Diode circuits stay dense (Newton edits a dense copy each iteration); explicit `solver="sparse"` on them
+  raises ValueError, `auto` picks dense. (`shortcut:` noted in `sparse.check_solver`.)
+- **Alternatives:** `dok_matrix`/`lil_matrix` assembly (slower, needs no custom class); sparse Newton.
+- **Why:** smallest change that keeps one set of stamps; sparse Newton is a bigger rewrite that the
+  task did not ask for (large circuits here are linear).
+
+## D10. ruff added to the `dev` extra; config is line-length 125 and E741 ignored
+- **Choice:** `pip install ruff` (listed in `pyproject.toml` dev extra; the CI lint step needs it);
+  `line-length = 125`, `ignore = ["E741"]`; `ruff --fix` re-sorted imports in 9 files (no behaviour change).
+- **Alternatives:** wrap the 25 long lines; rename every inductor variable `l`.
+- **Why:** both would be churn across tested code; the longest existing line is 122 and `l` is the standard
+  symbol for an inductor. No test was edited other than import order and one unused import.
+
+## D11. Version comes from `spicelite.__version__` (0.7.0)
+- **Choice:** `dynamic = ["version"]` in pyproject, `__version__ = "0.7.0"`; `--version` prints it.
+- **Why:** pyproject still said 0.1.0. One source of truth. No git tag was created (not allowed here).
+
+## D12. CI uses apt's ngspice and fails if any test is skipped
+- **Choice:** `ubuntu-latest`, `apt-get install ngspice`, Python 3.10/3.11/3.12, ruff, pytest, CLI smoke test;
+  the test step fails if the log contains "skipped", the same 0-skips rule as the local runs.
+- **Risk (unverified):** apt's ngspice is not 41 (the version the tolerances were measured against), so a
+  comparison could fail on GitHub even though it passes here. I cannot run the workflow without pushing.
