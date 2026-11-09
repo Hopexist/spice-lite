@@ -25,6 +25,11 @@ class SingularCircuitError(Exception):
     """The circuit has no unique solution (floating node, voltage-source loop)."""
 
 
+class OpenLoopWarning(UserWarning):
+    """A high-gain controlled source (an op-amp) has no feedback path, so its output is just
+    gain times the differential input."""
+
+
 @dataclass
 class Resistor:
     name: str
@@ -158,7 +163,64 @@ class Diode:
     model: DiodeModel | None = field(default=None, compare=False, repr=False)
 
 
-Element = Resistor | Capacitor | Inductor | VoltageSource | CurrentSource | Diode
+@dataclass
+class VCVS:
+    """`E name n+ n- nc+ nc- gain`: v(n+) - v(n-) = gain (v(nc+) - v(nc-)). Has a branch current."""
+
+    name: str
+    n_plus: str
+    n_minus: str
+    nc_plus: str
+    nc_minus: str
+    gain: float
+
+
+@dataclass
+class VCCS:
+    """`G name n+ n- nc+ nc- gm`: a current gm (v(nc+) - v(nc-)) flows n+ -> through the source -> n-."""
+
+    name: str
+    n_plus: str
+    n_minus: str
+    nc_plus: str
+    nc_minus: str
+    gm: float
+
+
+@dataclass
+class CCCS:
+    """`F name n+ n- Vsense gain`: a current gain * i(Vsense) flows n+ -> through the source -> n-.
+    i(Vsense) is the sense source's branch current: flowing into its + terminal, through it."""
+
+    name: str
+    n_plus: str
+    n_minus: str
+    sense: str
+    gain: float
+
+
+@dataclass
+class CCVS:
+    """`H name n+ n- Vsense rm`: v(n+) - v(n-) = rm * i(Vsense). Has a branch current."""
+
+    name: str
+    n_plus: str
+    n_minus: str
+    sense: str
+    rm: float
+
+
+Element = (Resistor | Capacitor | Inductor | VoltageSource | CurrentSource | Diode
+           | VCVS | VCCS | CCCS | CCVS)
+
+OPAMP_GAIN = 1e6  # default open-loop gain of the op-amp model
+
+
+def opamp(name: str, out: str, in_plus: str, in_minus: str, gain: float = OPAMP_GAIN) -> VCVS:
+    """An op-amp is a high-gain VCVS: v(out) = gain (v(in+) - v(in-)). It reuses the VCVS stamp
+    instead of a new element, and the finite gain makes the finite-gain error of a closed loop
+    visible. In a netlist write it as `E1 out 0 in+ in- 1e6`."""
+    return VCVS(name.lower(), out, "0", in_plus, in_minus, gain)
 
 
 @dataclass
@@ -267,15 +329,20 @@ class Circuit:
     def branch_elements(self) -> list[VoltageSource | Inductor]:
         """Elements that carry an extra MNA unknown (their branch current), in netlist order.
 
-        Branch k owns unknown (and row) n_nodes + k. Voltage sources and inductors both
-        need one: neither current can be written as a conductance times a voltage
-        (a voltage source fixes v; an inductor's admittance 1/(s*L) is infinite at DC).
+        Branch k owns unknown (and row) n_nodes + k. Voltage sources, inductors, and the two
+        voltage-output controlled sources (E, H) need one: none of their currents can be written
+        as a conductance times a voltage (a voltage source fixes v; an inductor's admittance
+        1/(s*L) is infinite at DC). G and F are current outputs and need none.
         """
-        return [e for e in self.elements if isinstance(e, (VoltageSource, Inductor))]
+        return [e for e in self.elements if isinstance(e, (VoltageSource, Inductor, VCVS, CCVS))]
 
 
-def element_nodes(e: Element) -> tuple[str, str]:
-    if isinstance(e, (VoltageSource, CurrentSource)):
+def element_nodes(e: Element) -> tuple[str, ...]:
+    """Every node the element touches. The first two are its main terminals (the pair it
+    conducts or drives); an E or G also lists its two control nodes after them."""
+    if isinstance(e, (VCVS, VCCS)):
+        return e.n_plus, e.n_minus, e.nc_plus, e.nc_minus
+    if isinstance(e, (VoltageSource, CurrentSource, CCCS, CCVS)):
         return e.n_plus, e.n_minus
     if isinstance(e, Diode):
         return e.anode, e.cathode

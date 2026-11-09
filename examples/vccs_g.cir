@@ -1,0 +1,10 @@
+VCCS (G): a current 2 mA/V * v(in) flows out -> 0 through the source, so v(out) = -2 v(in) (1k load, 1 uF, tau = 1 ms)
+V1 in 0 DC 1 AC 1 PULSE(0 1 0 10u 10u 3m 6m)
+G1 out 0 in 0 2m
+R1 out 0 1k
+C1 out 0 1u
+.op
+.dc V1 -2 2 1
+.ac dec 10 10 100k
+.tran 10u 5m
+.end

@@ -6,8 +6,9 @@ import math
 import re
 from decimal import Decimal
 
-from .circuit import (AcSweep, Capacitor, Circuit, CurrentSource, DcSweep, Diode, DiodeModel,
-                      Inductor, NetlistError, Pulse, Resistor, Sin, TranSpec, VoltageSource)
+from .circuit import (CCCS, CCVS, VCCS, VCVS, AcSweep, Capacitor, Circuit, CurrentSource, DcSweep,
+                      Diode, DiodeModel, Inductor, NetlistError, Pulse, Resistor, Sin, TranSpec,
+                      VoltageSource)
 
 # "meg" must be tried before "m" (milli), or 1meg would parse as 1 milli.
 _SUFFIX = {"meg": 6, "f": -15, "p": -12, "n": -9, "u": -6, "m": -3, "k": 3, "g": 9, "t": 12}  # powers of 10
@@ -158,6 +159,22 @@ def _parse_ic(low: str, num: int) -> dict[str, float]:
     return out
 
 
+def _parse_controlled(kind: str, tokens: list[str], num: int):
+    """E/G: `name n+ n- nc+ nc- value` (6 fields). F/H: `name n+ n- Vsense value` (5 fields)."""
+    name = tokens[0]
+    voltage_controlled = kind in "eg"
+    want = 6 if voltage_controlled else 5
+    if len(tokens) != want:
+        fields = "n+ n- nc+ nc- value" if voltage_controlled else "n+ n- Vsense value"
+        raise NetlistError(f"{name!r} needs exactly: {name} {fields} ({want} fields, got {len(tokens)})", num)
+    value = parse_value(tokens[-1], num)
+    if voltage_controlled:
+        return (VCVS if kind == "e" else VCCS)(name, *tokens[1:5], value)
+    if tokens[3] == name:
+        raise NetlistError(f"{name!r} cannot sense its own current", num)
+    return (CCCS if kind == "f" else CCVS)(name, tokens[1], tokens[2], tokens[3], value)
+
+
 def parse(text: str) -> Circuit:
     # The title is always line 1, even if it looks like a comment or element.
     lines = text.splitlines()
@@ -165,6 +182,7 @@ def parse(text: str) -> Circuit:
     body = "\n".join(["", *lines[1:]])  # blank first line keeps numbering aligned
     seen: set[str] = set()
     diode_lines: dict[str, int] = {}  # for errors that can only be found once all lines are read
+    sense_lines: dict[str, int] = {}  # F/H elements -> line, to check their sense source at the end
     dc_line = ic_line = 0
 
     for num, line in _logical_lines(body):
@@ -218,11 +236,16 @@ def parse(text: str) -> Circuit:
                 continue
             raise NetlistError(f"unsupported directive {name!r}", num)
         kind = name[0]
-        if kind not in "rclvid":
+        if kind not in "rclvidegfh":
             raise NetlistError(f"unsupported element {name!r}", num)
         if name in seen:
             raise NetlistError(f"duplicate element name {name!r}", num)
         seen.add(name)
+        if kind in "egfh":  # controlled sources have their own, fixed field counts
+            circuit.elements.append(_parse_controlled(kind, tokens, num))
+            if kind in "fh":
+                sense_lines[name] = num
+            continue
         if len(tokens) < (3 if wave else 4):
             raise NetlistError(f"{name!r} needs two nodes and a value", num)
         a, b = tokens[1], tokens[2]
@@ -251,6 +274,14 @@ def parse(text: str) -> Circuit:
         src = next((e for e in circuit.elements if e.name == circuit.dc.source), None)
         if not isinstance(src, (VoltageSource, CurrentSource)):
             raise NetlistError(f".dc source {circuit.dc.source!r} is not a V or I source in this netlist", dc_line)
+    by_name = {e.name: e for e in circuit.elements}
+    for name, line in sense_lines.items():
+        sense = by_name[name].sense
+        if sense not in by_name:
+            raise NetlistError(f"{name!r} senses the current of {sense!r}, which is not in the circuit", line)
+        if not isinstance(by_name[sense], VoltageSource):
+            raise NetlistError(f"{name!r} senses {sense!r}, which is not a voltage source (V...); "
+                               "only a V source's branch current can be sensed", line)
     if circuit.ic:
         nodes = circuit.node_index()
         for node in circuit.ic:

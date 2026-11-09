@@ -13,7 +13,8 @@ import math
 
 import numpy as np
 
-from .circuit import Capacitor, CurrentSource, Diode, DiodeModel, Inductor, Resistor, VoltageSource
+from .circuit import (CCCS, CCVS, VCCS, VCVS, Capacitor, CurrentSource, Diode, DiodeModel, Inductor,
+                      Resistor, VoltageSource)
 
 # ngspice-41's constants (CODATA 2014) and default 27 C, so Vt = kT/q = 0.0258649170 V matches
 # ngspice digit for digit; GMIN is the conductance SPICE puts across every diode junction.
@@ -154,3 +155,77 @@ def stamp_diode_small_signal(A: np.ndarray, idx: dict[str, int], d: Diode, g: fl
           cathode[  -g     +g  ]
     """
     _stamp_admittance(A, idx, d.anode, d.cathode, g)
+
+
+def _stamp_voltage_output(A: np.ndarray, idx: dict[str, int], row: int, n_plus: str, n_minus: str) -> None:
+    """The branch-current column and constraint-row skeleton shared by every element that fixes
+    v(n+) - v(n-) (V, E, H): the unknown current i flows n+ -> through the element -> n-."""
+    p, q = idx.get(n_plus), idx.get(n_minus)
+    if p is not None:
+        A[p, row] += 1.0
+        A[row, p] += 1.0
+    if q is not None:
+        A[q, row] -= 1.0
+        A[row, q] -= 1.0
+
+
+def stamp_vcvs(A: np.ndarray, idx: dict[str, int], row: int, e: VCVS) -> None:
+    """E: v(n+) - v(n-) = gain (v(nc+) - v(nc-)), with its own branch current i at index `row`.
+    Same skeleton as a voltage source, but the constraint row also depends on the control nodes.
+
+                 n+   n-   nc+    nc-    i
+          n+  [   0    0    0      0    +1 ]
+          n-  [   0    0    0      0    -1 ]
+          row [  +1   -1  -gain  +gain   0 ]   (right-hand side 0)
+    """
+    _stamp_voltage_output(A, idx, row, e.n_plus, e.n_minus)
+    cp, cm = idx.get(e.nc_plus), idx.get(e.nc_minus)
+    if cp is not None:
+        A[row, cp] -= e.gain
+    if cm is not None:
+        A[row, cm] += e.gain
+
+
+def stamp_vccs(A: np.ndarray, idx: dict[str, int], e: VCCS) -> None:
+    """G: a current gm (v(nc+) - v(nc-)) leaves n+ and enters n-. No extra unknown: the current
+    is a function of node voltages, so it goes straight into the KCL rows.
+
+                 nc+   nc-
+          n+  [  +gm   -gm ]
+          n-  [  -gm   +gm ]
+    """
+    for node, sign in ((e.n_plus, +1.0), (e.n_minus, -1.0)):
+        r = idx.get(node)
+        if r is None:
+            continue
+        for ctrl, csign in ((e.nc_plus, +1.0), (e.nc_minus, -1.0)):
+            c = idx.get(ctrl)
+            if c is not None:
+                A[r, c] += sign * csign * e.gm
+
+
+def stamp_cccs(A: np.ndarray, idx: dict[str, int], sense_row: int, e: CCCS) -> None:
+    """F: a current gain * i(Vsense) leaves n+ and enters n-. i(Vsense) is already an unknown (the
+    sense source's branch current, column `sense_row`), so no new unknown is needed.
+
+                 i(Vsense)
+          n+  [   +gain ]
+          n-  [   -gain ]
+    """
+    p, q = idx.get(e.n_plus), idx.get(e.n_minus)
+    if p is not None:
+        A[p, sense_row] += e.gain
+    if q is not None:
+        A[q, sense_row] -= e.gain
+
+
+def stamp_ccvs(A: np.ndarray, idx: dict[str, int], row: int, sense_row: int, e: CCVS) -> None:
+    """H: v(n+) - v(n-) = rm * i(Vsense), with its own branch current i at index `row`.
+
+                 n+   n-    i    i(Vsense)
+          n+  [   0    0   +1       0 ]
+          n-  [   0    0   -1       0 ]
+          row [  +1   -1    0      -rm ]   (right-hand side 0)
+    """
+    _stamp_voltage_output(A, idx, row, e.n_plus, e.n_minus)
+    A[row, sense_row] -= e.rm

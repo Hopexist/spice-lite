@@ -37,10 +37,10 @@ from dataclasses import dataclass, replace
 import numpy as np
 from scipy.linalg import lu_factor, lu_solve
 
-from ..circuit import (Capacitor, Circuit, ConvergenceError, CurrentSource, Inductor, Pulse,
-                       Resistor, SingularCircuitError, TranSpec, VoltageSource)
-from ..elements import (stamp_capacitor, stamp_current_source, stamp_inductor, stamp_resistor,
-                        stamp_voltage_source)
+from ..circuit import (CCCS, CCVS, VCCS, VCVS, Capacitor, Circuit, ConvergenceError, CurrentSource,
+                       Inductor, Pulse, Resistor, SingularCircuitError, TranSpec, VoltageSource)
+from ..elements import (stamp_capacitor, stamp_cccs, stamp_ccvs, stamp_current_source,
+                        stamp_inductor, stamp_resistor, stamp_vccs, stamp_vcvs, stamp_voltage_source)
 from ..mna import check_topology, solve
 from .newton import ABSTOL, MAX_ITER, RELTOL, VNTOL, _expand, _newton, solve_nonlinear
 
@@ -146,6 +146,14 @@ def tran(circuit: Circuit, spec: TranSpec | None = None, method: str | None = No
                     stamp_inductor(A, idx, row_of[e.name], e, s)
                 elif isinstance(e, VoltageSource):
                     stamp_voltage_source(A, scratch, idx, row_of[e.name], e, 0.0)
+                elif isinstance(e, VCVS):  # controlled sources are memoryless: they add to the
+                    stamp_vcvs(A, idx, row_of[e.name], e)  # constant matrix and nothing to the history
+                elif isinstance(e, VCCS):
+                    stamp_vccs(A, idx, e)
+                elif isinstance(e, CCCS):
+                    stamp_cccs(A, idx, row_of[e.sense], e)
+                elif isinstance(e, CCVS):
+                    stamp_ccvs(A, idx, row_of[e.name], row_of[e.sense], e)
             lu = None
             if not diodes:
                 lu = lu_factor(A)

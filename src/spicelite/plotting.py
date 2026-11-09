@@ -157,7 +157,8 @@ def main(examples_dir: str = "examples", out_dir: str = "docs") -> None:
     note = "" if have_ngspice else " (spicelite only: ngspice not found)"
     # ngspice linearises diodes at its own bias point, so tighten it (harmless for linear circuits)
     tight = "reltol=1e-9 abstol=1e-15 vntol=1e-12"
-    for name, node in (("rc_lowpass", "out"), ("rl_highpass", "out"), ("rlc_bandpass", "out"), ("diode_ac", "a")):
+    for name, node in (("rc_lowpass", "out"), ("rl_highpass", "out"), ("rlc_bandpass", "out"), ("diode_ac", "a"),
+                       ("sallen_key_lp", "out")):
         path = Path(examples_dir) / f"{name}.cir"
         mine = ac(parse_file(str(path)))
         # Each example has a 1 V AC source, so the node voltage is the transfer function.
@@ -168,7 +169,8 @@ def main(examples_dir: str = "examples", out_dir: str = "docs") -> None:
     # (example, plotted node, faint context node or None)
     for name, node, ctx in (("rc_step", "out", None), ("rlc_ring", "out", None), ("sin_rl", "out", None),
                             ("diode_rectifier_tran", "out", "in"), ("diode_clamp_tran", "out", "in"),
-                            ("rc_discharge_uic", "out", None), ("rlc_uic", "a", None)):
+                            ("rc_discharge_uic", "out", None), ("rlc_uic", "a", None),
+                            ("integrator", "out", "in")):
         path = Path(examples_dir) / f"{name}.cir"
         mine = tran(parse_file(str(path)))
         ref = run_tran(path.read_text()) if have_ngspice else None

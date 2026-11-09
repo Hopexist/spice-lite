@@ -4,8 +4,8 @@ A small SPICE-style circuit simulator in Python. It parses a subset of the SPICE
 format and solves DC operating point, DC sweep, AC small-signal and transient analyses with
 Modified Nodal Analysis (MNA), using Newton-Raphson for diodes. Results are checked against ngspice.
 
-**Status:** Milestones 1-6 done (parser, DC, AC, transient, diodes with Newton-Raphson in DC, AC and
-transient, `.ic`/UIC). Controlled sources and a CLI are next (see the roadmap in `CLAUDE.md`).
+**Status:** parser, DC, AC, transient, diodes with Newton-Raphson (DC, AC, transient), `.ic`/UIC, and
+controlled sources with op-amps are done. A CLI, sparse solves and CI are next (see the roadmap in `CLAUDE.md`).
 
 ## Install and quick start
 
@@ -44,7 +44,7 @@ the executable.
 
 | | |
 |---|---|
-| Elements | `R`, `C`, `L`, `D` (diode), `V` and `I` (DC, `AC mag [phase_deg]`, `PULSE(...)`, `SIN(...)`) |
+| Elements | `R`, `C`, `L`, `D` (diode), `V` and `I` (DC, `AC mag [phase_deg]`, `PULSE(...)`, `SIN(...)`), controlled sources `E` (VCVS), `G` (VCCS), `F` (CCCS), `H` (CCVS); an op-amp is an `E` with gain 1e6 |
 | Models | `.model name D(IS=.. N=.. RS=..)` (only the diode so far) |
 | Directives | `.op`, `.dc source start stop step`, `.ac dec\|oct\|lin`, `.tran tstep tstop [uic]`, `.ic v(node)=value`, `.options method=trap\|be`, `.end` |
 | Values | SI suffixes `f p n u m k meg g t`, case-insensitive (`m` = milli, `meg` = mega) |
@@ -55,8 +55,10 @@ the executable.
 
 Anything else raises a `NetlistError` with the line number. Known limitations:
 
-* `PULSE` needs all seven values; no controlled sources yet; the time step is fixed (a failing diode
-  step is halved internally, but output stays on the fixed grid).
+* `PULSE` needs all seven values; the time step is fixed (a failing diode step is halved internally,
+  but output stays on the fixed grid).
+* The op-amp model has a flat gain at every frequency (no gain-bandwidth limit, slew rate, saturation or
+  input/output impedance); an `F`/`H` can only sense a `V` source's current.
 * `.ic` only sets capacitor voltages (a node with no capacitor on it is rejected) and is only used
   with `uic`; without `uic` an `.ic` line is an error rather than being silently ignored.
 * A loop made only of voltage sources and capacitors (or inductors and current sources only) has no
@@ -147,6 +149,56 @@ circuit whose time constant is much shorter than the step, the output undershoot
 true answer (here below 0 V, which a diode would never allow); backward Euler decays monotonically.
 
 ![](docs/diode_ringing.png)
+
+## Controlled sources and op-amps
+
+| | Netlist | Equation | Extra branch unknown? |
+|---|---|---|---|
+| VCVS | `E name n+ n- nc+ nc- gain` | `v(n+) - v(n-) = gain (v(nc+) - v(nc-))` | yes (a voltage output) |
+| VCCS | `G name n+ n- nc+ nc- gm` | current `gm (v(nc+) - v(nc-))` flows `n+ -> source -> n-` | no |
+| CCCS | `F name n+ n- Vsense gain` | current `gain i(Vsense)` flows `n+ -> source -> n-` | no (reuses Vsense's) |
+| CCVS | `H name n+ n- Vsense rm` | `v(n+) - v(n-) = rm i(Vsense)` | yes (a voltage output) |
+
+All four are linear and memoryless, so they stamp the same real entries in DC, in the complex AC matrix
+and in every transient step (a linear transient still factors its matrix once). The stamps are in
+`elements.py` with their patterns in the docstrings.
+
+**Sign convention (same as ngspice).** The sense current `i(Vsense)` is the branch current of a `V`
+source: positive when current flows *into its + terminal and through it*. A source that delivers power
+therefore reads negative. `G` and `F` currents, like an `I` source's, flow from `n+` through the source to
+`n-`, so `G1 out 0 in 0 2m` *pulls* current out of node `out` (a positive input gives a negative output).
+Reversing the sense source's terminals flips the sign of what `F` and `H` produce. `tests/test_controlled.py`
+checks every orientation (both sense orientations, a power-delivering sense source, swapped output and
+control terminals) against ngspice.
+
+**Op-amp.** An op-amp is an `E` with a large gain (`E1 out 0 in+ in- 1e6`; `spicelite.opamp()` builds one
+with the default `OPAMP_GAIN = 1e6`). I reused the VCVS rather than adding a new element because it needs
+no new stamp or solver code and the finite gain makes the *finite-gain error* of a closed loop visible and
+testable: the inverting amplifier's gain is `-(R2/R1) / (1 + (1 + R2/R1)/A)`, within 1e-9 of that formula
+for A from 1e2 to 1e8, and the error falls as `110/A`. The alternative, a *nullor* (an ideal op-amp that
+forces `v(in+) = v(in-)` with an unconstrained output current), is not implemented: it needs its own stamp,
+cannot be used open loop, and has no finite-gain error to study.
+
+An op-amp with no feedback path from its output to its inputs (a gain >= 1e3 `E` whose output cannot reach
+its control nodes except through ground) raises an `OpenLoopWarning`, because its output is then just
+`gain x` the differential input. A floating input is a `SingularCircuitError` naming the node.
+
+### Examples against ngspice
+
+| Inverting amplifier | Integrator | Sallen-Key low-pass |
+|---|---|---|
+| gain -10, DC + AC + `.dc` | `v(out) = -(1/RC) integral v(in)` | `f0 = 562.7 Hz`, `Q = 1.414` |
+
+![](docs/bode_sallen_key_lp.png)
+
+The Sallen-Key response matches the second-order transfer function to 1e-5 (the follower's finite gain
+accounts for the rest); `|H(f0)| = Q` to 1e-5 with phase -90 degrees, and the peak frequency and height
+match `f0 sqrt(1 - 1/(2Q^2))` and `Q / sqrt(1 - 1/(4Q^2))`.
+
+![](docs/wave_integrator.png)
+
+Against ngspice: linear DC and `.dc` agree exactly, AC to 3e-15 relative, and transient to 1e-5 of peak
+(the O(h^2) trapezoidal error, as for the other RC circuits; the integrator is 5e-7).
 
 ## Initial conditions: `.ic` and `uic`
 
