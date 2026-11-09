@@ -191,3 +191,30 @@ Each entry: choice, alternatives, why.
   the time budget is checked between analyses and the worker additionally terminates itself on a hard timeout (Phase 3). Alternative: a deadline callback
   threaded through every analysis loop; rejected as invasive for the core library.
 - CLI golden outputs (tests/golden_cli/*.txt) were generated from the CLI before any web change, so the regression test really compares against the old behaviour.
+
+## D33. Frontend stack: Vite 8 + TypeScript 7, uPlot, CodeMirror 6, IBM Plex via @fontsource, Vitest
+- **Charts: uPlot, not Plotly.js.** uPlot is ~50 kB (Plotly is ~1 MB even in its basic bundle), handles 100k points at 60 fps, and has what was asked for
+  built in: live hover readout (legend), drag zoom, double-click reset, clickable legend toggling, log x scale, and cursor/zoom sync for the Bode pair.
+  Costs: less default polish (styled in style.css) and no built-in dual axes (voltages and currents get separate plots instead, which is also clearer).
+- **Editor:** CodeMirror 6 with a small StreamLanguage SPICE grammar (title line, * comments, dot commands, element names, numbers with SI suffix incl. meg,
+  waveform words, key= parameters), an error gutter and error-line decoration. Colors are CSS variables so the theme switch needs no editor rebuild.
+- **Fonts self-hosted** (latin subsets of IBM Plex Sans/Mono via @fontsource, ~170 kB total) instead of Google Fonts: no third-party request, works offline after first load.
+- **New npm dependencies:** uplot, codemirror (state, view, language, commands), @lezer/highlight, @fontsource/ibm-plex-*, pyodide (types + Node tests); dev: vite, typescript,
+  vitest, @playwright/test, @types/node. Bundle: ~375 kB JS (129 kB gzip), 13 kB CSS.
+- **Vite `base: "./"`** so every asset URL is relative and the site works from any sub-path (GitHub Pages /spice-lite/). The worker receives an absolute wheel URL
+  built from document.baseURI because a relative fetch inside a worker would resolve against the worker file.
+
+## D34. Look and feel: engineering notebook by day, oscilloscope by night
+- Light = warm paper with graph-paper grid, ink blue lines, vermilion Run button. Dark = graphite-green with phosphor traces and an amber Run button. IBM Plex Mono for
+  anything numeric or code, Plex Sans for prose. Theme follows prefers-color-scheme with a manual Auto / Light / Dark button (stored in localStorage, applied before first paint).
+- Traces use the Okabe-Ito color-blind-safe palette (darkened on paper, brightened on dark) AND eight dash patterns, so color is never the only cue; error state uses an icon,
+  a text label and a gutter marker as well as red. The table view is the accessible alternative to every plot.
+
+## D35. Running and sharing
+- **Run coalescing:** while a run is in flight, further clicks set a single "run again" flag; the stale result is dropped and one more run starts with the latest text.
+- **Hard timeout:** the engine terminates the worker after 60 s (Python cannot be interrupted any other way) and boots a fresh one on the next run. This is the real runtime
+  limit; run_netlist only checks the budget between analyses (D32).
+- **Share links:** `#ex=<name>` for an unmodified bundled example (short), otherwise `#n=<base64url>` or `#z=<base64url of deflate-raw>` (chosen when shorter), decoded with
+  the browser CompressionStream. Editing detaches from the example name and rewrites the hash after 400 ms.
+- **Caching:** the Python runtime, numpy and scipy come from the jsdelivr CDN and are cached by the browser's HTTP cache after the first visit; no service worker (a second cache
+  to invalidate for little gain). The worker stays alive for the page lifetime, so later runs reuse the loaded interpreter.

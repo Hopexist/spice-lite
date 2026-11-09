@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>spice-lite · circuit simulator in your browser</title>
+    <meta name="description" content="Write a SPICE netlist, press Run, and see DC, AC and transient results. The simulator is Python running in your browser; nothing is uploaded." />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230c1311'/%3E%3Cpath d='M3 20h6l3-10 5 14 3-9h9' fill='none' stroke='%235eead4' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+    <script>
+      // apply a stored theme before first paint so there is no flash
+      try { var t = localStorage.getItem("spicelite-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#editor">Skip to the netlist editor</a>
+    <header class="bar">
+      <div class="brand">
+        <svg class="logo" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true"><rect width="32" height="32" rx="7" class="logo-bg" /><path d="M3 20h6l3-10 5 14 3-9h9" fill="none" class="logo-line" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        <div>
+          <h1 class="name">spice<span class="dot">·</span>lite</h1>
+          <p class="tag">a circuit simulator that runs in your browser</p>
+        </div>
+      </div>
+      <div class="controls">
+        <label class="field"><span>Example</span><select id="examples"></select></label>
+        <button id="run" class="btn primary" type="button"><span class="label">Run</span><kbd id="run-kbd">Ctrl&#8201;&#8629;</kbd></button>
+        <button id="share" class="btn" type="button">Copy link</button>
+        <button id="theme" class="btn" type="button" aria-label="Color theme: follow system"><span id="theme-label">Auto</span></button>
+      </div>
+    </header>
+    <main class="split">
+      <section class="pane editor-pane" aria-labelledby="editor-h">
+        <div class="pane-head">
+          <h2 id="editor-h">Netlist</h2>
+          <p id="exdesc" class="desc"></p>
+        </div>
+        <div id="editor" class="editor"></div>
+      </section>
+      <section class="pane results-pane" aria-labelledby="results-h">
+        <div class="pane-head">
+          <h2 id="results-h">Results</h2>
+          <p id="status" class="desc" role="status" aria-live="polite"></p>
+        </div>
+        <div id="messages"></div>
+        <div id="boot" class="boot" hidden></div>
+        <div id="results"></div>
+      </section>
+    </main>
+    <footer class="foot">
+      <span id="runtime">Python runtime not loaded yet</span>
+      <span class="sep" aria-hidden="true">·</span>
+      <a href="https://github.com/Hopexist/spice-lite">source on GitHub</a>
+      <span class="sep" aria-hidden="true">·</span>
+      <span>nothing you type leaves your browser</span>
+    </footer>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

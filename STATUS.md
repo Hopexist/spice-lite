@@ -39,7 +39,7 @@ Baseline at start: 648 passed, 0 skipped (`which ngspice` finds nothing; ngspice
 |---|---|---|---|
 | 1. Feasibility spike | **GO** | (see git log) | Pyodide 314.0.7 = Python 3.14.2, numpy 2.4.6, scipy 1.18.0; spicelite (>=3.10) overlaps. rc_lowpass runs headlessly in Node; matplotlib not imported. |
 | 2. JSON API | done | (see git log) | 718 passed, 0 skipped (70 new web_api tests: every example strict-JSON, errors with line numbers, guards, warnings, CLI golden output unchanged) |
-| 3. UI | not started | - | - |
+| 3. UI | done | (see git log) | Vite 8 + TypeScript; typecheck and build clean; headless Edge run: no console errors, first results 11.7 s on a cold cache; verified dark/light, 1440 and 360 px, error state, .op, table view |
 | 4. ngspice reference overlay | not started | - | - |
 | 5. Tests, build, deploy | not started | - | - |
 | 6. Audit | not started | - | - |

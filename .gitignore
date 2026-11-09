@@ -12,3 +12,6 @@ dist/
 web/node_modules/
 web/dist/
 web/public/wheels/
+
+web/test-results/
+web/playwright-report/
