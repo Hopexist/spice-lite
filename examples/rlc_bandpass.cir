@@ -1,0 +1,7 @@
+Series RLC bandpass (output across R), f0 = 1/(2 pi sqrt(LC)) = 1.5915 kHz, Q = 1
+V1 in 0 DC 0 AC 1
+L1 in a 10m
+C1 a out 1u
+R1 out 0 100
+.ac dec 50 100 100k
+.end

@@ -1,14 +1,19 @@
 """Netlist text -> Circuit. Anything unsupported raises NetlistError with a line number."""
 from __future__ import annotations
 
+import cmath
+import math
 import re
 
-from .circuit import Circuit, CurrentSource, NetlistError, Resistor, VoltageSource
+from .circuit import (AcSweep, Capacitor, Circuit, CurrentSource, Inductor, NetlistError,
+                      Resistor, VoltageSource)
 
 # "meg" must be tried before "m" (milli), or 1meg would parse as 1 milli.
 _SUFFIX = {"meg": 1e6, "f": 1e-15, "p": 1e-12, "n": 1e-9, "u": 1e-6,
            "m": 1e-3, "k": 1e3, "g": 1e9, "t": 1e12}
 _VALUE = re.compile(r"^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(meg|[fpnumkgt])?$")
+_TWO_TERMINAL = {"r": (Resistor, "resistance"), "c": (Capacitor, "capacitance"),
+                 "l": (Inductor, "inductance")}
 
 
 def parse_value(text: str, line: int | None = None) -> float:
@@ -35,14 +40,42 @@ def _logical_lines(text: str) -> list[tuple[int, str]]:
     return out
 
 
-def _source_value(tokens: list[str], num: int) -> float:
-    """Accept `5` or `DC 5`. AC/PULSE/SIN come in later milestones."""
+def _source_values(tokens: list[str], num: int) -> tuple[float, complex]:
+    """Source spec -> (dc, ac phasor). Accepts `5`, `DC 5`, `AC 1 [phase_deg]`, `DC 5 AC 1 [phase]`.
+    The netlist phase is in degrees; the phasor stores it as radians. PULSE/SIN come later."""
     args = tokens[3:]
-    if args and args[0] == "dc":
-        args = args[1:]
-    if len(args) != 1:
-        raise NetlistError(f"unsupported source spec {' '.join(tokens[3:])!r}", num)
-    return parse_value(args[0], num)
+    dc, ac, seen, i = 0.0, 0j, set(), 0
+    if args[0] not in ("dc", "ac"):  # bare value means DC
+        dc, i = parse_value(args[0], num), 1
+        seen.add("dc")
+    while i < len(args):
+        key = args[i]
+        if key not in ("dc", "ac") or key in seen or i + 1 >= len(args):
+            raise NetlistError(f"unsupported source spec {' '.join(args)!r}", num)
+        seen.add(key)
+        value = parse_value(args[i + 1], num)
+        i += 2
+        if key == "dc":
+            dc = value
+        else:
+            phase = 0.0
+            if i < len(args) and args[i] not in ("dc", "ac"):
+                phase, i = parse_value(args[i], num), i + 1
+            ac = cmath.rect(value, math.radians(phase))
+    return dc, ac
+
+
+def _parse_ac(tokens: list[str], num: int) -> AcSweep:
+    if len(tokens) != 5:
+        raise NetlistError(".ac needs: .ac dec|lin|oct <points> <fstart> <fstop>", num)
+    try:
+        points = int(tokens[2])
+    except ValueError:
+        raise NetlistError(f"number of points must be an integer, got {tokens[2]!r}", num) from None
+    try:
+        return AcSweep(tokens[1], points, parse_value(tokens[3], num), parse_value(tokens[4], num))
+    except ValueError as err:
+        raise NetlistError(str(err), num) from None
 
 
 def parse(text: str) -> Circuit:
@@ -63,9 +96,14 @@ def parse(text: str) -> Circuit:
                     raise NetlistError(".op takes no arguments", num)
                 circuit.op = True
                 continue
+            if name == ".ac":
+                if circuit.ac is not None:
+                    raise NetlistError("duplicate .ac directive", num)
+                circuit.ac = _parse_ac(tokens, num)
+                continue
             raise NetlistError(f"unsupported directive {name!r}", num)
         kind = name[0]
-        if kind not in "rvi":
+        if kind not in "rclvi":
             raise NetlistError(f"unsupported element {name!r}", num)
         if name in seen:
             raise NetlistError(f"duplicate element name {name!r}", num)
@@ -73,17 +111,17 @@ def parse(text: str) -> Circuit:
         if len(tokens) < 4:
             raise NetlistError(f"{name!r} needs two nodes and a value", num)
         a, b = tokens[1], tokens[2]
-        if kind == "r":
+        if kind in _TWO_TERMINAL:
+            cls, what = _TWO_TERMINAL[kind]
             if len(tokens) != 4:
                 raise NetlistError(f"{name!r} takes exactly two nodes and a value", num)
             value = parse_value(tokens[3], num)
             if value <= 0:
-                raise NetlistError(f"{name!r} must have a positive resistance", num)
-            circuit.elements.append(Resistor(name, a, b, value))
-        elif kind == "v":
-            circuit.elements.append(VoltageSource(name, a, b, _source_value(tokens, num)))
+                raise NetlistError(f"{name!r} must have a positive {what}", num)
+            circuit.elements.append(cls(name, a, b, value))
         else:
-            circuit.elements.append(CurrentSource(name, a, b, _source_value(tokens, num)))
+            cls = VoltageSource if kind == "v" else CurrentSource
+            circuit.elements.append(cls(name, a, b, *_source_values(tokens, num)))
     return circuit  # shortcut: .end is optional here, require it if strictness matters
 
 

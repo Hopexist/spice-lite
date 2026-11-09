@@ -77,7 +77,7 @@ def test_stops_at_end():
 
 def test_error_line_numbers():
     with pytest.raises(NetlistError) as e:
-        parse("t\n* c\nR1 a 0 1k\nC1 a 0 1u\n.end")
+        parse("t\n* c\nR1 a 0 1k\nD1 a 0 1u\n.end")
     assert e.value.line == 4 and "line 4" in str(e.value)
 
 
