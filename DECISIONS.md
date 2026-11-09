@@ -375,3 +375,22 @@ gradient orb. Palette and measured contrast in `docs/brand/brand-sheet.png`: Ink
 #555b63 (6.9:1), Fault #a31919 (7.7:1), Rule #b9bec6 (hairlines only, 1.9:1, never text); dark: Night #0e1013, Night ink #e8eaed
 (15.8:1), Night signal #7cb2ff (8.8:1). Type: Archivo 400/600/700 for UI, JetBrains Mono 400/600 for the netlist and numbers only
 (Impeccable: monospace for code and measurement, not as a "technical" costume).
+
+
+## D49: Design system (Phase 3)
+- **Tokens** in `web/src/style.css`: type (`--sans` Archivo, `--mono` JetBrains Mono, a 7-step size scale), space (4 px steps,
+  `--s1`..`--s8`, `--gutter`), shape (`--r1` 2 px, `--r2` 4 px, hairline and strong rules), shadow (`--shadow-pop`, for the toast only:
+  a datasheet has no shadows), motion (`--dur-1`..`--dur-4` 120-300 ms, `--dur-reveal` 600 ms for the one authored plot reveal,
+  `--ease-out` / `--ease-in-out` from Emil Kowalski), and colour. Light and dark are the same token names with different values; the
+  contrast test (unchanged) checks every text, state, syntax and trace pair in both themes (37 checks pass).
+- **Layout:** the two panes run full bleed, split by one black hairline; the header sits on a 2 px ink rule and the footer on a 1 px
+  one (a datasheet page), replacing the floating rounded cards and the graph-paper background.
+- **Components:** tabs carry a 3 px signal underline (no folder tabs); the Plot / Table switch is ink-filled when pressed; tables are
+  characteristics tables (strong top rule, sunken header, mono values right-aligned, sans for words); the gutter is sunken like a table
+  column; buttons and the select are 38 px tall (32 px for in-panel controls); the reference panel lost its 3 px coloured left border
+  (an Impeccable refuse-list item); monospace now appears only for the netlist, numbers, legends and axes.
+- **Plots:** the trace colours and their dash patterns are unchanged (Okabe-Ito, colour-blind safe, never colour alone).
+- **Browser surfaces:** text selection, caret, scrollbars, focus ring, link underline offset and tabular numerals are themed.
+- **Fonts:** `@fontsource/archivo` (400/600/700) and `@fontsource/jetbrains-mono` (400/600) replace IBM Plex Sans/Mono: self-hosted
+  latin subsets with `font-display: swap`, no third-party font request at runtime. Font files are data, not code; recorded per the
+  dependency rule.

@@ -1,9 +1,9 @@
-import "@fontsource/ibm-plex-sans/latin-400.css";
-import "@fontsource/ibm-plex-sans/latin-500.css";
-import "@fontsource/ibm-plex-sans/latin-600.css";
-import "@fontsource/ibm-plex-mono/latin-400.css";
-import "@fontsource/ibm-plex-mono/latin-500.css";
-import "@fontsource/ibm-plex-mono/latin-600.css";
+// Self-hosted, latin-subset fonts (font-display: swap): Archivo for the interface, JetBrains Mono for netlists and numbers.
+import "@fontsource/archivo/latin-400.css";
+import "@fontsource/archivo/latin-600.css";
+import "@fontsource/archivo/latin-700.css";
+import "@fontsource/jetbrains-mono/latin-400.css";
+import "@fontsource/jetbrains-mono/latin-600.css";
 import "uplot/dist/uPlot.min.css";
 import "./style.css";
 
