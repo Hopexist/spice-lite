@@ -180,3 +180,14 @@ Each entry: choice, alternatives, why.
 
 ## D31. Dev tooling
 - Node 26 / npm 11 are available; Vite and Playwright are installable from npm (network works), so the frontend is Vite + TypeScript.
+
+## D32. JSON shape and guards (web_api.py)
+- Result: {ok, title, version, warnings, analyses:[{type, title, x:{name, unit, log, values}|null, signals:[{name, unit, values, part}], meta}]}.
+  AC signals are magnitude (dB) and phase (deg) pairs distinguished by `part`; non-finite numbers become null so the output is strict JSON
+  (an AC-quiet supply rail is -inf dB). .op has x = null (a table, not a curve). No analysis directive runs .op with a note, as the CLI does.
+- Guards (Limits, all overridable through options): 200,000 characters, 500 nodes (100 with diodes/MOSFETs: dense Newton), 100,000 points per analysis,
+  points x elements <= 2,000,000 (x5 for nonlinear), 30 s wall clock. Size and cost are checked BEFORE running; adaptive transients get a max_steps budget
+  derived from the same limits. **Runtime limit caveat:** one analysis cannot be interrupted from inside Python (Pyodide has no threads or signals), so
+  the time budget is checked between analyses and the worker additionally terminates itself on a hard timeout (Phase 3). Alternative: a deadline callback
+  threaded through every analysis loop; rejected as invasive for the core library.
+- CLI golden outputs (tests/golden_cli/*.txt) were generated from the CLI before any web change, so the regression test really compares against the old behaviour.

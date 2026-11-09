@@ -1,0 +1,6 @@
+
+== .op operating point ==
+signal        value
+ v(in)           10
+v(out)      6.66667
+ i(v1)  -0.00333333
