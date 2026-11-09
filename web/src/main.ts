@@ -13,6 +13,7 @@ import { DEFAULT_EXAMPLE, EXAMPLES, findExample } from "./examples";
 import { columns, csvFileName, defaultVisible, eng, groupSignals, num, opRows, toCsv } from "./format";
 import { decodeShare, encodeShare } from "./hash";
 import { drawGroup, type Extra, type PlotHandle } from "./plots";
+import { renderDemo, renderSheets } from "./landing";
 import { BOOT_STAGES, flash, reducedMotion, revealPlot, stageOf, tick } from "./motion";
 import { loadReference, overlayFor, type Overlay } from "./reference";
 import type { Analysis, RunOk, RunResult, Warn } from "./types";
@@ -67,7 +68,7 @@ function setBoot(message: string | null) {
       el("strong", {}, "Starting the Python runtime"),
       el("span", { class: "stage" }),
       el("div", { class: "bar-det", role: "progressbar", "aria-label": "Starting the Python runtime", "aria-valuemin": "0", "aria-valuemax": String(BOOT_STAGES.length) }, el("span", { class: "fill" })),
-      el("span", { class: "note" }, "The first visit downloads about 25 MB (Python, numpy, scipy); your browser caches it, so later visits start in seconds."),
+      el("span", { class: "note" }, "The first visit downloads about 24 MB (Python, numpy, scipy); your browser caches it, so later visits start in seconds."),
     );
   }
   // a known stage fills the bar to that step; an unknown message keeps the bar where it is
@@ -447,6 +448,19 @@ async function main() {
   editor = createEditor($("editor"), "", { onChange: onEdit, onRun: () => void run() });
   $("run").addEventListener("click", () => void run());
   $("share").addEventListener("click", () => void copyLink());
+  // the landing band: Try it loads the demo's circuit into the editor, runs it and brings the workspace into view
+  $("try").addEventListener("click", () => {
+    const ex = findExample("rc_step");
+    if (ex) {
+      loadText(ex.text, ex.name);
+      void updateHash();
+      void run();
+    }
+    $("app").scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" });
+    editor.focus();
+  });
+  void renderDemo($("demo"), $<HTMLButtonElement>("demo-pause"));
+  renderSheets($("sheets"));
   $("theme").addEventListener("click", () => {
     const next = ({ system: "light", light: "dark", dark: "system" } as const)[currentTheme()];
     // a short cross-fade explains that the whole page changed palette (View Transitions; instant where unsupported or reduced)

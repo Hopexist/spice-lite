@@ -426,3 +426,25 @@ Thesis: one authored moment (the plot reveal); everything else is feedback or st
   both handled it). The page listener now ignores keys the editor already handled; an e2e test counts renders.
 - **Tests:** `web/tests/motion.test.ts` (stages match the worker's messages, easing endpoints) and four e2e tests (reveal once,
   reduced motion, changed-value roll and mark, single run on Ctrl+Enter).
+
+
+## D51: Landing band, capability table and element sheets (Phase 5)
+- **Placement:** a compact hero sits between the header bar and the workspace; the workspace keeps one full viewport of height on wide
+  screens, so "Try it" (loads `rc_step`, runs it, scrolls the workspace into view, focuses the editor) lands on a complete tool. The
+  capability table and the element sheets follow the workspace. Impeccable's modes: the hero is Persuade (one line that names the
+  category, the action in its working form), the workspace stays Operate.
+- **Demo (StageShow principles, built natively):** one product window (chrome with a Run pill, the netlist, Figure 1) drawn as SVG from
+  the committed ngspice reference of `examples/rc_step.cir` (real simulation output, 501 points, downsampled to ~160); the caption says so
+  and quotes the measured agreement (1.1e-5 of peak, `tests/test_vs_ngspice.py`). One 9 s CSS loop in four beats: Run pressed, the traces
+  draw (clip-path), t = RC is marked at 63.2 %, the result holds, then it fades and Run is pressed again (a reset with a visible cause).
+  Poster frame = the annotated result (shown under reduced motion). The loop pauses off screen (IntersectionObserver), in a hidden tab,
+  and by a "Pause demo" button (Taste: anything moving past 5 s has a pause control). If the data cannot load, the demo is hidden rather
+  than faked.
+- **Capability table:** a ruled feature table with varied spans (Kokonut-style bento, rebuilt without React), each cell with a small
+  diagram. Every number is checkable: 809 Python tests at the start of this run (now 824 with the sheet tests), 1e-9 / 1e-6 ngspice tolerances
+  (test files), 191 vs 5,000 steps (`REPORT_M8_M9.md`), Python 3.14 (footer), about 24 MB first visit (measured 23.9 MB, `REPORT_WEB.md`).
+- **Element sheets:** `web/src/element-sheets.json` (content) + `web/src/symbols.ts` (symbols drawn in code) render one monochrome sheet
+  per element (title block with code and sheet number, symbol on a fine grid, syntax, parameter / unit / default table, a numbered stamp
+  note, an example). `tests/test_element_sheets.py` fails if a parser letter has no sheet, a symbol is missing, an example does not parse,
+  or a documented diode / MOSFET default differs from the dataclass.
+- **Fixed while testing:** the `hidden` attribute lost to classes that set `display` (`.btn`); a base rule now makes it win.

@@ -91,7 +91,7 @@ Started Mon Nov 9 16:27:12 EST 2026 (per `date`); time box ~3 h (final report by
 | 2. Design direction | done | A Datasheet chosen 23 vs 18 vs 17 (D47); mark, favicons, palette and type (D48) |
 | 3. Design system | done | tokens, both themes, every component restyled, fonts self-hosted (D49); CSS 4.54 kB gzip (was 4.08) |
 | 4. Motion | done | D50 table; no library; e2e 20 passed (4 new motion tests), npm test 106; also fixed the double run on Ctrl+Enter |
-| 5. Landing and spec sheets | not started | |
+| 5. Landing and spec sheets | done | hero + live demo from rc_step data, capability table, 11 element sheets (D51); e2e 24, pytest 824 |
 | 6. Audit | not started | |
 
 Baseline size and load: JS 375.7 kB (129.4 kB gzip), CSS 13.9 kB (4.1 kB gzip), index.html 1.4 kB gzip; dist/ 1.71 MB in total

@@ -207,3 +207,40 @@ test("Ctrl+Enter in the editor runs the netlist exactly once", async ({ page }) 
   await page.waitForTimeout(1500); // a second, coalesced run would land here
   expect(await page.evaluate(() => (window as unknown as { renders: number }).renders)).toBe(1);
 });
+
+// ---- landing band and element sheets (DECISIONS D51) ----
+
+test("Try it loads the RC step into the editor, runs it and brings the workspace into view", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".tab").first()).toBeVisible();
+  await page.locator("#try").click();
+  await expect(page.locator("#examples")).toHaveValue("rc_step");
+  await expect(page.locator(".tab", { hasText: ".tran" })).toBeVisible();
+  await expect(page.locator("#app")).toBeInViewport();
+});
+
+test("the demo is drawn from the committed simulation data, and it can be paused", async ({ page }) => {
+  await page.goto("/");
+  const demo = page.locator(".d-window");
+  await expect(demo).toHaveClass(/playing/);
+  expect(Number(await page.locator(".d-vout").evaluate((e) => e.getAttribute("points")!.split(" ").length))).toBeGreaterThan(100);
+  await page.locator("#demo-pause").click();
+  await expect(demo).toHaveClass(/paused/);
+  await expect(page.locator("#demo-pause")).toHaveAttribute("aria-pressed", "true");
+});
+
+test("under reduced motion the demo is its poster frame: the whole story, at rest, with no pause button", async ({ browser }) => {
+  const context = await browser.newContext({ reducedMotion: "reduce" });
+  const page = await context.newPage();
+  await page.goto("/");
+  await expect(page.locator(".d-window")).toHaveClass(/poster/);
+  await expect(page.locator(".d-note")).toBeVisible();
+  await expect(page.locator("#demo-pause")).toBeHidden();
+  await context.close();
+});
+
+test("there is one spec sheet per element type", async ({ page }) => {
+  await page.goto("/#elements");
+  await expect(page.locator(".sheet")).toHaveCount(11);
+  for (const code of ["R", "C", "L", "V", "I", "D", "M", "E", "G", "F", "H"]) await expect(page.locator(".sheet-code", { hasText: new RegExp(`^${code}$`) })).toHaveCount(1);
+});
