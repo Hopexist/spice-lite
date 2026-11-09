@@ -304,3 +304,6 @@ inlined on the assembly path (`STAMPS.get(type(e))`); per-step RHS functions are
 sources" and `.tran ... uic` failed. Fix: one held source per node pair; its current is split by capacitance (same dv/dt), with the
 sign flipped for a reversed one. A single capacitor per node pair goes through the same code with ratio 1, so existing results are
 unchanged (goldens). A capacitor directly across a voltage source with uic is still an error: the two can disagree (inconsistent .ic).
+
+## D44: Report naming (refactor run)
+The web UI report moves to `REPORT_WEB.md`; `REPORT.md` stays the latest run, as with `REPORT_M5_M7.md` and `REPORT_M8_M9.md`.
