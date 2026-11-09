@@ -16,6 +16,7 @@ from .circuit import (
     CurrentSource,
     Diode,
     Inductor,
+    Mosfet,
     OpenLoopWarning,
     Resistor,
     SingularCircuitError,
@@ -74,9 +75,9 @@ def build(circuit: Circuit, omega: float | None = None, t: float | None = None,
             stamp_cccs(A, idx, row_of[e.sense], e)
         elif isinstance(e, CCVS):
             stamp_ccvs(A, idx, row_of[e.name], row_of[e.sense], e)
-        elif isinstance(e, Diode) and not nonlinear_ok:
+        elif isinstance(e, (Diode, Mosfet)) and not nonlinear_ok:
             raise NotImplementedError(
-                f"{e.name}: diodes need the Newton solver or the small-signal path; "
+                f"{e.name}: diodes and MOSFETs need the Newton solver or the small-signal path; "
                 "use analysis.dc / analysis.ac / analysis.tran instead of mna.build directly")
     return (A.tocsc() if sparse else A), b
 

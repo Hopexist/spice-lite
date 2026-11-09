@@ -156,3 +156,14 @@ def test_tstep_larger_than_tstop_is_a_netlist_error(adaptive):
 def test_adaptive_tstep_equal_to_tstop_takes_a_single_step():
     r = tran(parse("t\nV1 a 0 DC 1\nR1 a b 1k\nC1 b 0 1u\n.tran 1m 1m\n"), adaptive=True)
     assert len(r.time) >= 2 and r.time[-1] == 1e-3 and r.time[0] == 0.0
+
+
+def test_mna_build_refuses_a_mosfet_instead_of_silently_dropping_it():
+    """Found in the stamping audit: mna.build guarded only diodes, so a MOSFET circuit built directly
+    (without the Newton solver) came back with the transistor missing and a plausible-looking answer."""
+    from spicelite.mna import build, solve
+    c = parse("t\nVDD d 0 DC 5\nVG g 0 DC 2\nR1 d x 1k\nM1 x g 0 0 nm\n.model nm NMOS (VTO=1 KP=1e-4)\n.op\n")
+    with pytest.raises(NotImplementedError, match="m1"):
+        build(c)
+    with pytest.raises(NotImplementedError, match="m1"):
+        solve(c)

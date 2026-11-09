@@ -238,3 +238,26 @@ Each entry: choice, alternatives, why.
 
 ## D38: Report naming
 The M8-M9 report moves to `REPORT_M8_M9.md` (as the M5-M7 one did earlier) and `REPORT.md` is now the web UI report. Alternative: `REPORT_WEB.md`; rejected to keep "REPORT.md = latest run".
+
+# Stamping refactor run
+
+## D39: Element-dispatch audit (Phase 1, before the refactor)
+Every place the code branches on element type, and what it handles (✓ handled, – deliberately not applicable, ✗ gap).
+
+| Site | R | C | L | V | I | D | M | E | G | F | H | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `parser.py` element letters (`rclvidegfhm`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | source of truth for what a netlist can contain |
+| `mna.build` (DC, AC, t = 0 solve; Newton's linear part) | ✓ | ✓ | ✓ | ✓ | ✓ | guard | **✗** | ✓ | ✓ | ✓ | ✓ | D raised `NotImplementedError` unless Newton asked; **M fell through and stamped nothing** (bug, fixed with a test first) |
+| `tran.matrix` (companion matrix per step size h) | ✓ | ✓ | ✓ | ✓ | – | – | – | ✓ | ✓ | ✓ | ✓ | duplicate of the `mna.build` chain; I is RHS-only; D and M are stamped by Newton each iteration |
+| `tran.step` RHS (sources at t) | – | hist | hist | ✓ | ✓ | – | – | – | – | – | – | a third, smaller copy of the source RHS logic; C/L history currents are transient-only by design |
+| `ac._diode_solver` (small-signal) | via build | via build | via build | via build | via build | ✓ | ✓ | via build | via build | via build | via build | separate loops: diodes then MOSFETs, each with its own bias extraction |
+| `newton._newton` (per-iteration linearisation) | – | – | – | – | – | ✓ | ✓ | – | – | – | – | device-specific limiting and residual checks; by design |
+| `circuit.branch_elements` | – | – | ✓ | ✓ | – | – | – | ✓ | – | – | ✓ | extra unknown = current through a voltage-defined branch |
+| `circuit.element_nodes` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| `mna.check_topology` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | conduction / voltage-loop rules per type |
+| `tran._frozen_state_system` | – | ✓ | ✓ | – | – | – | – | – | – | – | – | holds C as a V source and L as an I source; by design |
+| `adaptive.breakpoints`, `tran._warn_if_edges_unresolved` | – | – | – | ✓ | ✓ | – | – | – | – | – | – | only sources have waveforms |
+| `web_api._dc` | – | – | – | ✓ | ✓ | – | – | – | – | – | – | sweep unit V or A |
+
+Findings: two real duplications (`mna.build` vs `tran.matrix`, and the source RHS in `mna.build` vs `tran.step`), one bug (MOSFET in `mna.build`),
+and a third dispatch in `ac._diode_solver`. The remaining sites are per-type *rules* (topology, nodes, waveforms), not stamping, and stay where they are.
