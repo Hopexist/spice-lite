@@ -218,3 +218,13 @@ Each entry: choice, alternatives, why.
   the browser CompressionStream. Editing detaches from the example name and rewrites the hash after 400 ms.
 - **Caching:** the Python runtime, numpy and scipy come from the jsdelivr CDN and are cached by the browser's HTTP cache after the first visit; no service worker (a second cache
   to invalidate for little gain). The worker stays alive for the page lifetime, so later runs reuse the loaded interpreter.
+
+## D36. Reference overlay: precomputed, resampled onto spicelite's grid, committed to the repo
+- `scripts/gen_reference.py` runs each example through the existing ngspice runner (tightened options as in the comparison tests; tmax_fraction 1e4 for
+  stiff_adaptive) and stores ngspice's curves interpolated onto spicelite's own x grid, so the page just subtracts. If the browser's grid differs slightly (adaptive
+  stepping can choose marginally different steps under Pyodide's BLAS) the page re-interpolates linearly onto its own grid (`resample`, unit-tested).
+- **Committed, not built in CI:** ngspice is not available on the Pages build and apt's version differs from 41, which the tolerances and these curves were measured against
+  (893 kB for 33 examples). Regenerate with `npm run reference` (needs NGSPICE).
+- Drawn dashed in the ink color over the coloured traces, so agreement is visible as the colour showing through the gaps; labelled "precomputed, not a live run" in the
+  toggle tooltip and the error panel. The panel lists the largest difference per plot (dB / degrees for AC, volts / amps and fraction of peak otherwise) and, for `.op`,
+  adds ngspice and difference columns to the table. The toggle exists only while the editor still equals the bundled example text.

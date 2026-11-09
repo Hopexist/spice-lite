@@ -214,13 +214,14 @@ function drawPanel(i: number) {
   const ref = showReference ? overlay.get(i) : undefined;
   if (a.type === "op" || views.get(i) === "table") {
     body.append(buildTable(a, ref));
-    if (ref && a.type === "op") body.append(el("p", { class: "note" }, `ngspice reference (precomputed, ngspice 41): max difference ${ref.summary}.`));
+    if (ref && a.type === "op") body.prepend(refPanel(ref));
     return;
   }
   const groups = groupSignals(a);
   const syncKey = a.type === "ac" ? `bode-${i}` : undefined;
-  const refNote = ref ? el("p", { class: "note" }, `ngspice reference (precomputed, ngspice 41): max difference ${ref.summary}.`) : null;
+  const refNote = ref ? refPanel(ref) : null;
   const currentBox = el("details", { class: "more" }, el("summary", {}, "Branch currents"));
+  if (refNote) body.append(refNote);
   let anyCurrent = false;
   for (const g of groups) {
     const host = el("div", { class: "plotbox" });
@@ -235,9 +236,14 @@ function drawPanel(i: number) {
     body.append(currentBox);
     currentBox.addEventListener("toggle", () => currentBox.open && window.dispatchEvent(new Event("resize")));
   }
-  if (refNote) body.append(refNote);
   if (groups.some((g) => g.signals.length > 8)) body.append(el("p", { class: "note" }, "Only the first 8 traces start visible; click a name in the legend to show or hide any trace. Drag on a plot to zoom, double-click to reset."));
   else body.append(el("p", { class: "note" }, "Drag on a plot to zoom, double-click to reset; click a name in the legend to hide a trace."));
+}
+
+/** The small error panel: how far spicelite is from the precomputed ngspice curves, per plot. */
+function refPanel(ref: Overlay): HTMLElement {
+  const rows = ref.rows.map((r) => el("li", {}, el("span", {}, `${r.label}: `), el("code", {}, r.worst)));
+  return el("div", { class: "refinfo" }, el("strong", {}, "vs ngspice 41"), el("span", {}, " precomputed offline for this bundled example, not a live run. Largest difference:"), el("ul", {}, ...rows));
 }
 
 function redrawPlots() {

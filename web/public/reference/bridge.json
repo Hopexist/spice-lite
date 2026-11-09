@@ -1,0 +1,1 @@
+{"example":"bridge","ngspice":"ngspice-41 : Circuit level simulation program","analyses":[{"type":"op","x":[],"signals":[{"name":"v(top)","part":null,"values":[10.0]},{"name":"v(a)","part":null,"values":[6.58064516]},{"name":"v(b)","part":null,"values":[5.93548387]},{"name":"i(v1)","part":null,"values":[-0.00477419355]}]}]}

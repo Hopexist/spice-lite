@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "wheel": "node scripts/build-wheel.mjs",
+    "reference": "python ../scripts/gen_reference.py",
     "dev": "npm run wheel && vite",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
