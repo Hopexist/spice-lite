@@ -235,3 +235,6 @@ Each entry: choice, alternatives, why.
 - **Pages:** `pages.yml` builds wheel + site on push to main and deploys with the official upload-pages-artifact / deploy-pages actions. Needs the repository setting Pages > Source = GitHub Actions (a manual step for the owner).
 - **CI:** a separate `web` job (typecheck, `npm test`, build, e2e) so the Python matrix is untouched. Its first run has not happened (nothing is pushed); the Pyodide test and e2e need network access to the jsdelivr CDN.
 - **Screenshots** in `docs/web_ui_*.png` are captured headlessly with `web/scripts/shoot.mjs`; no GIF.
+
+## D38: Report naming
+The M8-M9 report moves to `REPORT_M8_M9.md` (as the M5-M7 one did earlier) and `REPORT.md` is now the web UI report. Alternative: `REPORT_WEB.md`; rejected to keep "REPORT.md = latest run".

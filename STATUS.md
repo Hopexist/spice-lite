@@ -42,7 +42,7 @@ Baseline at start: 648 passed, 0 skipped (`which ngspice` finds nothing; ngspice
 | 3. UI | done | (see git log) | Vite 8 + TypeScript; typecheck and build clean; headless Edge run: no console errors, first results 11.7 s on a cold cache; verified dark/light, 1440 and 360 px, error state, .op, table view |
 | 4. ngspice reference overlay | done | (see git log) | scripts/gen_reference.py: 33 examples, 893 kB of committed JSON; toggle + error panel verified in Edge; toggle disappears after an edit |
 | 5. Tests, build, deploy | done | (see git log) | web: 64 unit tests + 37 real-Pyodide example tests (vitest); 16 Playwright e2e tests (Edge locally, Chromium in CI) incl. serving dist under /spice-lite/; pages.yml + ci.yml `web` job; README section + docs/web_ui_*.png |
-| 6. Audit | not started | - | - |
+| 6. Audit | done | (see git log) | scripts/audit.mjs: all 33 examples through the built site in Edge, no console errors or HTTP failures; e2e covers error on first/last line, empty editor, guard limit, rapid Run clicks, 360 and 1440 px |
 
 Spike result (`web/scripts/pyodide-spike.mjs`; run: `cd web && npm install && node scripts/pyodide-spike.mjs <dir with spicelite wheel> ../examples/rc_lowpass.cir`):
 pyodide boot 3.1 s, numpy+scipy load 3.6 s (first run, CDN downloads), total 10.7 s in Node; result -0.000434 dB at 10 Hz and -40.0004 dB at 100 kHz, identical to the CLI.
