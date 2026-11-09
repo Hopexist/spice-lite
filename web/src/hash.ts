@@ -18,8 +18,9 @@ export function fromBase64Url(text: string): Uint8Array {
 
 async function pipe(bytes: Uint8Array, stream: CompressionStream | DecompressionStream): Promise<Uint8Array> {
   const writer = stream.writable.getWriter();
-  void writer.write(bytes as BufferSource);
-  void writer.close();
+  // a corrupt stream rejects both of these as well as the read below; the read reports it, so these must not go unhandled
+  writer.write(bytes as BufferSource).catch(() => {});
+  writer.close().catch(() => {});
   return new Uint8Array(await new Response(stream.readable).arrayBuffer());
 }
 

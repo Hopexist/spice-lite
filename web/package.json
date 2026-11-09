@@ -8,9 +8,10 @@
     "reference": "python ../scripts/gen_reference.py",
     "dev": "npm run wheel && vite",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "node scripts/build-wheel.mjs && vitest run",
     "build": "npm run wheel && npm run typecheck && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "e2e": "playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.0",

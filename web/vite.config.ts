@@ -7,5 +7,5 @@ export default defineConfig({
   build: { target: "es2022", sourcemap: false, chunkSizeWarningLimit: 700 },
   worker: { format: "es" },
   server: { fs: { allow: [".."] } },
-  test: { environment: "node", include: ["tests/**/*.test.ts"] },
+  test: { environment: "node", include: ["tests/**/*.test.ts"], testTimeout: 60_000, hookTimeout: 600_000 },
 });

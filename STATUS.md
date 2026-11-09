@@ -41,7 +41,7 @@ Baseline at start: 648 passed, 0 skipped (`which ngspice` finds nothing; ngspice
 | 2. JSON API | done | (see git log) | 718 passed, 0 skipped (70 new web_api tests: every example strict-JSON, errors with line numbers, guards, warnings, CLI golden output unchanged) |
 | 3. UI | done | (see git log) | Vite 8 + TypeScript; typecheck and build clean; headless Edge run: no console errors, first results 11.7 s on a cold cache; verified dark/light, 1440 and 360 px, error state, .op, table view |
 | 4. ngspice reference overlay | done | (see git log) | scripts/gen_reference.py: 33 examples, 893 kB of committed JSON; toggle + error panel verified in Edge; toggle disappears after an edit |
-| 5. Tests, build, deploy | not started | - | - |
+| 5. Tests, build, deploy | done | (see git log) | web: 64 unit tests + 37 real-Pyodide example tests (vitest); 16 Playwright e2e tests (Edge locally, Chromium in CI) incl. serving dist under /spice-lite/; pages.yml + ci.yml `web` job; README section + docs/web_ui_*.png |
 | 6. Audit | not started | - | - |
 
 Spike result (`web/scripts/pyodide-spike.mjs`; run: `cd web && npm install && node scripts/pyodide-spike.mjs <dir with spicelite wheel> ../examples/rc_lowpass.cir`):

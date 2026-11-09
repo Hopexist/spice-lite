@@ -42,6 +42,14 @@ def onto(x_ref, y_ref, x_new):
     return np.interp(np.asarray(x_new, dtype=float), np.asarray(x_ref, dtype=float), np.asarray(y_ref, dtype=float))
 
 
+def _branch_shift(analysis: dict, name: str, ph: np.ndarray) -> int:
+    """A phase of +180 and -180 degrees are the same signal, and unwrapping from either side gives either. Return the
+    whole number of turns that puts ngspice's curve on spicelite's branch (so the overlay does not sit 360 degrees away)."""
+    mine = next(s for s in analysis["signals"] if s["name"] == name and s["part"] == "phase")["values"]
+    pairs = [(m, t) for m, t in zip(mine, ph) if m is not None and np.isfinite(t)]
+    return int(round(float(np.median([m - t for m, t in pairs])) / 360)) if pairs else 0
+
+
 def reference_for(name: str, text: str, mine: dict) -> list[dict]:
     out = []
     for a in mine["analyses"]:
@@ -59,8 +67,9 @@ def reference_for(name: str, text: str, mine: dict) -> list[dict]:
                         mag = magnitude_db(z)
                     mag = np.where(np.isfinite(mag), mag, np.nan)  # an exactly zero signal has no dB value
                     sig.append({"name": f"{prefix}({n})", "part": "magnitude", "values": clean(onto(r.freqs, mag, x))})
-                    ph = phase_degrees(z)
-                    sig.append({"name": f"{prefix}({n})", "part": "phase", "values": clean(onto(r.freqs, ph, x))})
+                    ph = onto(r.freqs, phase_degrees(z), x)
+                    ph = ph + 360 * _branch_shift(a, f"{prefix}({n})", ph)
+                    sig.append({"name": f"{prefix}({n})", "part": "phase", "values": clean(ph)})
         else:  # dc and tran: real curves against a sweep value or time
             x = a["x"]["values"]
             if kind == "dc":

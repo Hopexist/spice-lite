@@ -228,3 +228,10 @@ Each entry: choice, alternatives, why.
 - Drawn dashed in the ink color over the coloured traces, so agreement is visible as the colour showing through the gaps; labelled "precomputed, not a live run" in the
   toggle tooltip and the error panel. The panel lists the largest difference per plot (dB / degrees for AC, volts / amps and fraction of peak otherwise) and, for `.op`,
   adds ngspice and difference columns to the table. The toggle exists only while the editor still equals the bundled example text.
+
+## D37: Frontend test strategy, deploy, and CI (Phase 5)
+- **Tests:** vitest for pure logic (hash round trip, formatting/CSV, reference resampling, palette contrast) plus one test that boots real Pyodide in Node, installs the freshly built wheel and runs all 33 examples against the committed ngspice reference (tolerances in the file, with reasons). Playwright for end-to-end: it drives the built site via `vite preview`, and a second spec serves `dist/` under `/spice-lite/` with a tiny Node server to prove sub-path hosting (`base: "./"`).
+- **Alternatives:** jsdom component tests (would not exercise the worker, uPlot canvas or Pyodide); a Playwright-downloaded browser locally (needs a download; the machine has Edge, so `PW_CHANNEL=msedge`, and CI installs Chromium).
+- **Pages:** `pages.yml` builds wheel + site on push to main and deploys with the official upload-pages-artifact / deploy-pages actions. Needs the repository setting Pages > Source = GitHub Actions (a manual step for the owner).
+- **CI:** a separate `web` job (typecheck, `npm test`, build, e2e) so the Python matrix is untouched. Its first run has not happened (nothing is pushed); the Pyodide test and e2e need network access to the jsdelivr CDN.
+- **Screenshots** in `docs/web_ui_*.png` are captured headlessly with `web/scripts/shoot.mjs`; no GIF.
