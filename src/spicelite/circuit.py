@@ -76,6 +76,17 @@ class Pulse:
         if self.per <= 0 or self.per < self.tr + self.pw + self.tf:
             raise ValueError("PULSE period must be positive and at least tr + pw + tf")
 
+    def breakpoints(self, tstop: float) -> list[float]:
+        """Times in (0, tstop] where the waveform has a corner: the start and end of every edge."""
+        if tstop / self.per > 100_000:
+            raise ValueError(f"PULSE period {self.per:g} s gives more than 100000 periods in {tstop:g} s")
+        out, k = [], 0
+        while self.td + k * self.per < tstop:
+            base = self.td + k * self.per
+            out += [base, base + self.tr, base + self.tr + self.pw, base + self.tr + self.pw + self.tf]
+            k += 1
+        return [t for t in out if 0 < t <= tstop]
+
     def value(self, t: float) -> float:
         t -= self.td
         if t <= 0:
@@ -99,6 +110,10 @@ class Sin:
     freq: float
     td: float = 0.0
     theta: float = 0.0
+
+    def breakpoints(self, tstop: float) -> list[float]:
+        """The one corner of a SIN source: where it starts, at td."""
+        return [self.td] if 0 < self.td <= tstop else []
 
     def __post_init__(self) -> None:
         if self.freq <= 0:
@@ -352,6 +367,7 @@ class Circuit:
     ac: AcSweep | None = None  # the `.ac` directive, if any
     tran: TranSpec | None = None  # the `.tran` directive, if any
     method: str = "trap"  # `.options method=trap|be`: integration method for .tran
+    step_control: str = "fixed"  # `.options step=fixed|adaptive`: how .tran chooses its time step
     dc: DcSweep | None = None  # the `.dc` directive, if any
     models: dict[str, DiodeModel | MosModel] = field(default_factory=dict)  # `.model` cards by name
     ic: dict[str, float] = field(default_factory=dict)  # `.ic v(node)=volts` initial conditions (UIC only)

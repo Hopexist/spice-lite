@@ -147,6 +147,32 @@ def iv_family(path: str | Path, example: str = "examples/nmos_iv.cir", vgs_value
     plt.close(fig)
 
 
+def adaptive_steps_plot(path: str | Path, example: str = "examples/rlc_ring_adaptive.cir",
+                        nodes: tuple[str, ...] = ("b",), logx: bool = False) -> None:
+    """The waveform with a dot at every accepted adaptive time point (top) and the step size h = dt
+    against time on a log axis (bottom): h shrinks where the waveform bends and grows as it decays,
+    and drops back to tstep after each source corner."""
+    r = tran(parse(Path(example).read_text()), adaptive=True)
+    fig, (ax, ax_h) = plt.subplots(2, 1, sharex=True, figsize=(7, 6), gridspec_kw={"height_ratios": [3, 2]})
+    t = np.maximum(r.time, r.time[1] / 10)  # a log axis cannot show t = 0
+    for k, node in enumerate(nodes):
+        ax.plot(t * 1e3, r.voltages[node], "-", lw=1.2, color="0.5")
+        ax.plot(t * 1e3, r.voltages[node], ".", ms=3, color=f"C{k}", label=f"v({node}), {len(r.time)} accepted steps")
+    ax.set_ylabel("Voltage (V)")
+    ax.set_title(f"Adaptive stepping: {Path(example).stem} ({r.rejected} steps rejected)")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    ax_h.semilogy(t[1:] * 1e3, np.diff(r.time) * 1e6, ".", ms=3, color="tab:red")
+    if logx:
+        ax.set_xscale("log")
+    ax_h.set_ylabel("step h (us)")
+    ax_h.set_xlabel("Time (ms)")
+    ax_h.grid(True, which="both", alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+
+
 def diode_ringing_demo(path: str | Path) -> None:
     """Half-wave rectifier into a FAST RC (tau = 10 us) with a 50 us step: when the diode turns
     off the output decays much faster than the step. Trapezoidal undershoots below 0 V and rings
@@ -232,6 +258,11 @@ def main(examples_dir: str = "examples", out_dir: str = "docs") -> None:
                  ref.time if ref else None, ref.voltages[node] if ref else None,
                  mine.voltages[ctx] if ctx else None, f"v({ctx})")
         print(f"wrote {out_dir}/wave_{name}.png{note}")
+    adaptive_steps_plot(Path(out_dir) / "adaptive_steps.png", str(Path(examples_dir) / "rlc_ring_adaptive.cir"))
+    print(f"wrote {out_dir}/adaptive_steps.png")
+    adaptive_steps_plot(Path(out_dir) / "adaptive_steps_stiff.png", str(Path(examples_dir) / "stiff_adaptive.cir"),
+                        ("fast", "slow"), logx=True)
+    print(f"wrote {out_dir}/adaptive_steps_stiff.png")
     iv_family(Path(out_dir) / "iv_nmos.png", str(Path(examples_dir) / "nmos_iv.cir"))
     print(f"wrote {out_dir}/iv_nmos.png{note}")
     path = Path(examples_dir) / "cmos_inverter_vtc.cir"

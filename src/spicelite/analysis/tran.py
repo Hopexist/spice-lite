@@ -66,6 +66,7 @@ from ..elements import (
 )
 from ..mna import check_topology, solve
 from ..sparse import Triplets, check_solver, factor, use_sparse
+from .adaptive import StepControl, adaptive_loop, breakpoints
 from .newton import ABSTOL, MAX_ITER, RELTOL, VNTOL, _expand, _newton, solve_nonlinear
 
 MAX_CUTS = 8  # a failing step may be halved up to 8 times: down to 1/256 of the nominal step
@@ -84,6 +85,7 @@ class TranResult:
     currents: dict[str, np.ndarray]  # V-source / inductor name -> amps (SPICE sign)
     iterations: np.ndarray | None = None  # Newton iterations per step (0 if linear); None if not run
     cuts: int = 0  # how many times a step had to be halved to converge
+    rejected: int = 0  # adaptive stepping: steps thrown away because their error estimate was too big
 
 
 def _warn_if_edges_unresolved(circuit: Circuit, h: float) -> None:
@@ -117,9 +119,11 @@ def _frozen_state_system(ex: Circuit, vc: dict[str, float], il: dict[str, float]
 
 
 def tran(circuit: Circuit, spec: TranSpec | None = None, method: str | None = None,
-         max_iter: int = MAX_ITER, max_cuts: int = MAX_CUTS, solver: str = "auto") -> TranResult:
-    """Fixed-step transient. `method` is "trap" (default) or "be"; None uses the circuit's
-    `.options method=`. The step is the largest h <= tstep that divides tstop evenly.
+         max_iter: int = MAX_ITER, max_cuts: int = MAX_CUTS, solver: str = "auto",
+         adaptive: bool | StepControl | None = None) -> TranResult:
+    """Transient analysis, fixed-step unless `adaptive` (see adaptive.py). `method` is "trap" (default) or "be";
+    None uses the circuit option `.options method=`. Fixed step: the largest h <= tstep that divides tstop
+    evenly. `adaptive` is a StepControl, True (its defaults) or False; None uses `.options step=`.
     The t = 0 state is the DC solution (sources at their t = 0 value), or with `uic` the `.ic`
     capacitor voltages and zero inductor currents. `max_iter` caps each Newton run and
     `max_cuts` the step halvings (diodes only). `solver` is "auto", "dense" or "sparse":
@@ -137,10 +141,14 @@ def tran(circuit: Circuit, spec: TranSpec | None = None, method: str | None = No
         raise ValueError(".ic is only used with uic: pass a TranSpec with uic=True (.tran ... uic)")
     trap = method == "trap"
     check_solver(circuit, solver)
+    if adaptive is None:
+        adaptive = circuit.step_control == "adaptive"
+    ctl = adaptive if isinstance(adaptive, StepControl) else (StepControl() if adaptive else None)
 
     n_steps = math.ceil(spec.tstop / spec.tstep - 1e-9)
     h = spec.tstop / n_steps
-    _warn_if_edges_unresolved(circuit, h)
+    if ctl is None:  # adaptive stepping lands on every PULSE edge instead
+        _warn_if_edges_unresolved(circuit, h)
 
     check_topology(circuit, dc=False)  # companion models make C conduct, L finite
     ex = _expand(circuit)  # diodes with RS get a hidden internal node (no-op for linear circuits)
@@ -163,6 +171,8 @@ def tran(circuit: Circuit, spec: TranSpec | None = None, method: str | None = No
 
     def matrix(hh: float):
         if hh not in matrices:
+            if len(matrices) >= 64:  # adaptive runs visit many step sizes: keep the cache bounded
+                matrices.clear()
             s = (2.0 if trap else 1.0) / hh
             sparse = not diodes and use_sparse(size, solver)
             A = Triplets(size, float) if sparse else np.zeros((size, size))
@@ -272,6 +282,13 @@ def tran(circuit: Circuit, spec: TranSpec | None = None, method: str | None = No
             ind_v = np.array([nodes1.get(l.n1, 0.0) - nodes1.get(l.n2, 0.0) for l in inds])  # ground is absent = 0 V
         except SingularCircuitError:
             pass  # see the shortcut note in the docstring
+
+    if ctl is not None:
+        floor = np.array([ctl.vabs] * n + [ctl.iabs] * (size - n))
+        times, xa, iters, rejected = adaptive_loop(advance, (x, cap_i, ind_v), spec, breakpoints(circuit, spec.tstop),
+                                                   ctl, trap, floor)
+        return TranResult(times, {node: xa[:, idx[node]] for node in circuit.node_index()},
+                          {e.name: xa[:, n + k] for k, e in enumerate(branches)}, iters, cuts, rejected)
 
     xs = np.empty((n_steps + 1, size))
     iters = np.zeros(n_steps + 1, dtype=int)

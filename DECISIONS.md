@@ -128,3 +128,35 @@ Each entry: choice, alternatives, why.
 ## D22. A second golden file freezes M7 results
 - `tests/golden_m1_m7.json` (26 examples, from commit 35ecdb5 via `git archive`) joins the v0.6 file, so the controlled-source
   examples are protected against later changes as well.
+
+## D23. Adaptive stepping is opt-in (`.options step=adaptive` or `adaptive=`); fixed-step stays the default
+- **Choice:** default `step=fixed`; `tran(adaptive=False)` overrides the option.
+- **Alternative:** adaptive by default.
+- **Why:** every existing result, golden file and ngspice tolerance assumes the fixed grid, and the brief asks for the
+  fast path to stay for fixed-step runs. The CLI prints whichever grid was used.
+
+## D24. LTE estimator: divided differences of accepted points (no extra solve)
+- **Choice:** trap |LTE| ~ h^3 |DD3| / 2, BE ~ h^2 |DD2| over the last accepted points, per unknown, against
+  rtol max(|x|, |x_prev|) + floor. Controller: factor 0.9 r^(-1/(p+1)) clamped to [0.5, 2], then rounded DOWN to hmax / 2^k.
+- **Alternatives:** step doubling (3 solves per step, simple but 3x the cost); predictor-corrector difference (needs an explicit
+  predictor for each element type, the same number mathematically); Richardson with an embedded BE/trap pair.
+- **Why:** free (history is already kept), well understood (the SPICE estimator), and the power-of-two grid makes the cached LU
+  factors reusable so a linear run pays few factorisations.
+
+## D25. Breakpoints restart the history at `tstep`; no BE start-up step after a corner
+- Landing exactly on PULSE/SIN corners and discarding the history there keeps the third difference from straddling a corner.
+  `shortcut:` a source with ZERO rise time leaves the trapezoidal capacitor-current history stale for one step (documented
+  in `adaptive.py`); use a nonzero rise time or method=be.
+
+## D26. Default rtol = 1e-4 (not 1e-3), hmax = tstop / 50, hmin = tstop x 1e-9
+- **Why rtol 1e-4:** at 1e-3 the Q ~ 10 ringing example is only 2e-2 / 4e-2 (V / I) of peak against ngspice because per-step error
+  accumulates over ~20 periods; 1e-4 gives 4.7e-3 / 9.4e-3 with ~2150 steps (ngspice uses ~20000). rtol 1e-5 gives 1.1e-3.
+- hmax / hmin guard values are overridable with `StepControl`.
+
+## D27. `.ic` / UIC already existed (M6); this phase adds the example, the analytic and ngspice checks and adaptive support
+- The brief asks for UIC to remove the M4 "capacitor-only circuits rejected" limitation; M6 had already done that, so Phase 2 only adds
+  `rc_ic_discharge.cir` (and a test of a capacitor-only loop) rather than re-implementing it.
+
+## D28. `stiff_adaptive` is excluded from the generic ngspice transient loop and gets its own test
+- ngspice runs with tmax = tstep / 10 = 0.1 ns there, i.e. ~5e8 points. `test_adaptive.py::test_stiff_adaptive_matches_ngspice`
+  runs it with `tmax_fraction=1e4` (tmax = 10 us). No other example is excluded.

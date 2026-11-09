@@ -1,0 +1,6 @@
+RC discharge from an initial condition: C starts at 5 V (UIC, no DC operating point), tau = R C = 1 ms
+R1 out 0 1k
+C1 out 0 1u
+.ic v(out)=5
+.tran 10u 5m uic
+.end

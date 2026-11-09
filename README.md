@@ -257,6 +257,38 @@ the device is its three conductances at the bias point. Both bulk junctions cont
 
 ![](docs/wave_cmos_inverter_tran.png)
 
+## Step control and initial conditions
+
+`.tran tstep tstop [uic]` is fixed-step by default (trapezoidal, LU factored once). `.options step=adaptive`
+(or `tran(circuit, adaptive=True)` / `adaptive=StepControl(rtol=..., hmin=..., hmax=..., max_steps=...)`) switches
+to **local-truncation-error control**: after every step the error is estimated from divided differences of the
+accepted points (trap: h^3 |DD3| / 2, backward Euler: h^2 |DD2|, no extra solve), a step is accepted if it is within
+`rtol` of each unknown (default 1e-4, plus 1 uV / 1 nA floors), and the next step is h (0.9 r^(-1/(p+1))) limited to
+0.5x-2x, rounded down to hmax / 2^k so factored matrices are reused. Steps land exactly on every PULSE / SIN corner (the
+history restarts at `tstep` after a corner). `tstep` is the initial and restart step, `hmax` defaults to tstop / 50,
+`hmin` to tstop x 1e-9; going below `hmin` or past `max_steps` raises a `ConvergenceError` that says where.
+`adaptive=False` forces the fixed-step path, which is unchanged (`tests/test_regression.py`).
+
+| Circuit | Fixed | Adaptive | Max error |
+|---|---|---|---|
+| `rc_step`-style RC, 5 ms, tau = 1 ms (trap) | 5001 steps (1 us) | 94 steps | 6.8e-5 (analytic) |
+| `stiff_adaptive` (tau = 1 us and 10 ms, 50 ms) | 5000 steps: error 0.17; no fixed step under 5e5 steps reaches 5e-2 | 191 steps | 5e-4 (analytic), 3.3e-4 of peak vs ngspice |
+| `rlc_ring_adaptive` (Q ~ 10, 4 ms) | ngspice: ~20000 points | 2154 steps (38 rejected) | 4.7e-3 of peak vs ngspice (accumulated over ~20 periods) |
+
+![](docs/adaptive_steps_stiff.png)
+
+![](docs/adaptive_steps.png)
+
+The cost: the matrix depends on h, so an adaptive linear run re-factors whenever h changes (few distinct sizes thanks to the
+power-of-two grid), where a fixed-step run factors once. It pays off when it saves many more steps than that, as above;
+for a circuit with one time scale the fixed-step fast path is cheaper. The global error is the per-step error accumulated over
+the run (an oscillator with Q ~ 10 over 20 periods ends ~50x above rtol), and falls roughly as rtol^(2/3).
+
+**Initial conditions.** `.ic v(node)=value` with `.tran ... uic` skips the DC operating point: capacitor voltages start at the
+given values (unspecified nodes at 0, inductor currents at 0), which also works for circuits that have no DC solution
+(`examples/rc_ic_discharge.cir`: a capacitor discharging through a resistor from 5 V, compared with the analytic exponential and
+ngspice).
+
 ## Sparse solves and benchmark
 
 An MNA matrix is mostly zeros (each element touches only its own nodes), so `spicelite.sparse` assembles it as

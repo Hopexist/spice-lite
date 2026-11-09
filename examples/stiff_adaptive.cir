@@ -1,0 +1,11 @@
+Stiff: two RC branches on one source, tau = 1 us and tau = 10 ms (ratio 10^4)
+* A fixed step must resolve the fast branch for the whole 50 ms run; adaptive stepping only needs small
+* steps while the fast branch is moving, then grows toward tstop / 50.
+V1 in 0 PULSE(0 1 0 1n 1n 1 2)
+R1 in fast 1k
+C1 fast 0 1n
+R2 in slow 100k
+C2 slow 0 100n
+.options step=adaptive
+.tran 1n 50m
+.end

@@ -34,6 +34,7 @@ _SUFFIX = {"meg": 6, "f": -15, "p": -12, "n": -9, "u": -6, "m": -3, "k": 3, "g":
 _VALUE = re.compile(r"^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(meg|[fpnumkgt])?$")
 _WAVE = re.compile(r"\b(pulse|sin)\s*\(([^)]*)\)")
 _METHOD = re.compile(r"method=(trap|be)")
+_STEP = re.compile(r"step=(fixed|adaptive)")
 _MODEL = re.compile(r"\.model\s+(\S+)\s+([a-z]+)\s*\(?([^)]*)\)?\s*$")
 _MODEL_PARAMS = ("is", "n", "rs")
 _MOS_PARAMS = ("level", "vto", "kp", "lambda", "gamma", "phi")
@@ -277,10 +278,17 @@ def parse(text: str) -> Circuit:
                 circuit.tran = _parse_tran(tokens, num)
                 continue
             if name in (".options", ".option"):
-                m = _METHOD.fullmatch("".join(tokens[1:]))
-                if not m:
-                    raise NetlistError("unsupported option; only 'method=trap' or 'method=be'", num)
-                circuit.method = m.group(1)
+                items = re.sub(r"\s*=\s*", "=", " ".join(tokens[1:])).split()
+                if not items:
+                    raise NetlistError("unsupported option; supported: method=trap|be, step=fixed|adaptive", num)
+                for item in items:
+                    if m := _METHOD.fullmatch(item):
+                        circuit.method = m.group(1)
+                    elif m := _STEP.fullmatch(item):
+                        circuit.step_control = m.group(1)
+                    else:
+                        raise NetlistError(f"unsupported option {item!r}; supported: method=trap|be, "
+                                           "step=fixed|adaptive", num)
                 continue
             raise NetlistError(f"unsupported directive {name!r}", num)
         kind = name[0]

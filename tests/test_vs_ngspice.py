@@ -11,7 +11,8 @@ from spicelite.ngspice import find_ngspice, run_ac, run_dc, run_op, run_tran
 
 EXAMPLES = sorted((Path(__file__).parent.parent / "examples").glob("*.cir"))
 AC_EXAMPLES = [p for p in EXAMPLES if parse(p.read_text()).ac is not None]
-TRAN_EXAMPLES = [p for p in EXAMPLES if parse(p.read_text()).tran is not None]
+# stiff_adaptive has its own ngspice test (test_adaptive.py): ngspice with tmax = tstep / 10 = 0.1 ns would need 5e8 points
+TRAN_EXAMPLES = [p for p in EXAMPLES if parse(p.read_text()).tran is not None and p.name != "stiff_adaptive.cir"]
 
 # Allowed |spicelite - ngspice| as a FRACTION OF THE SIGNAL'S PEAK, per transient example.
 # ngspice runs with reltol=1e-6 and tmax = tstep/10, so it is the accurate side: the gap is
@@ -34,7 +35,12 @@ TRAN_TOL = {"rc_step.cir": 5e-5, "rlc_ring.cir": 1e-3, "sin_rl.cir": 5e-4,
             # Milestone 8: CMOS inverter, 1 pF load, 0.0125 ns step. Same O(h^2) story (the gap fell
             # 2.1e-2 -> 5.2e-3 -> 1.3e-3 -> 3.3e-4 V as h went 0.05 -> 0.00625 ns: 4x per halving).
             # Observed worst 2.6e-4 of peak (v(out), at the switching edge); supply current 2.1e-4.
-            "cmos_inverter_tran.cir": 1.2e-3}
+            "cmos_inverter_tran.cir": 1.2e-3,
+            # Milestone 9. rc_ic_discharge: UIC discharge on the fixed 10 us grid, observed 1.0e-5 of peak,
+            # tolerance 5e-5. rlc_ring_adaptive: ADAPTIVE steps (rtol 1e-4, ~2150 steps vs ngspice ~20000);
+            # the error is per-step LTE accumulated over ~20 ring periods (Q ~ 10), observed 4.7e-3 on v(b) and
+            # 9.4e-3 on the loop current, tolerance 4e-2. (test_adaptive.py shows it falls ~ rtol^(2/3).)
+            "rc_ic_discharge.cir": 5e-5, "rlc_ring_adaptive.cir": 4e-2}
 # ngspice linearises a diode at ITS bias point, which with default tolerances is only good to
 # ~1e-4 (observed 1.3e-4 relative on diode_ac). Tightening the options is harmless for linear
 # circuits and brings the diode example to 6e-11, so every AC comparison uses them.

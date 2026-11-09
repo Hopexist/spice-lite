@@ -25,6 +25,6 @@ Baseline at start: 520 passed, 0 skipped.
 | Phase | State | Last commit | Tests (ngspice on) |
 |---|---|---|---|
 | 1. M8 MOSFET | done | (see git log) | 602 passed, 0 skipped (537 passed, 65 skipped without ngspice) |
-| 2. M9 adaptive stepping | not started | - | - |
+| 2. M9 adaptive stepping | done | (see git log) | 635 passed, 0 skipped (564 passed, 71 skipped without ngspice) |
 | 3. Audit | not started | - | - |
 | 4. Report | not started | - | - |
