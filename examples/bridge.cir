@@ -1,0 +1,9 @@
+Unbalanced Wheatstone bridge with a 5k bridge resistor
+V1 top 0 DC 10
+R1 top a 1k
+R2 a 0 2k
+R3 top b 3k
+R4 b 0 4k
+R5 a b 5k
+.op
+.end

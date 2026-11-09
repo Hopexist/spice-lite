@@ -58,6 +58,11 @@ def parse(text: str) -> Circuit:
         if name.startswith("."):
             if name == ".end":
                 return circuit
+            if name == ".op":
+                if len(tokens) != 1:
+                    raise NetlistError(".op takes no arguments", num)
+                circuit.op = True
+                continue
             raise NetlistError(f"unsupported directive {name!r}", num)
         kind = name[0]
         if kind not in "rvi":

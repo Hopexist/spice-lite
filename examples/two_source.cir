@@ -1,0 +1,8 @@
+Two voltage sources feeding one node: v(b) = 90/11 V, i(V1) = -3.818 mA, i(V2) = +1.091 mA
+V1 a 0 DC 12
+R1 a b 1k
+R2 b c 2k
+V2 c 0 DC 6
+R3 b 0 3k
+.op
+.end

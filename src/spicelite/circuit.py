@@ -17,6 +17,10 @@ class NetlistError(Exception):
         super().__init__(f"line {line}: {message}" if line is not None else message)
 
 
+class SingularCircuitError(Exception):
+    """The circuit has no unique DC solution (floating node, voltage-source loop)."""
+
+
 @dataclass
 class Resistor:
     name: str
@@ -50,6 +54,7 @@ Element = Resistor | VoltageSource | CurrentSource
 class Circuit:
     title: str = ""
     elements: list[Element] = field(default_factory=list)
+    op: bool = False  # a `.op` directive was present
 
     def node_index(self) -> dict[str, int]:
         """Map each non-ground node to an MNA row/column 0..n-1 (first-appearance order).

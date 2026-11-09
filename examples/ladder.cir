@@ -1,0 +1,9 @@
+R-2R ladder, 2 stages: v(n1)=8, v(n2)=4, v(n3)=2 (each stage halves), i(V1) = -4 mA
+V1 n1 0 DC 8
+R1 n1 n2 1k
+R2 n2 0 2k
+R3 n2 n3 1k
+R4 n3 0 2k
+R5 n3 0 2k
+.op
+.end
