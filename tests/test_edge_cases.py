@@ -6,6 +6,7 @@ from spicelite import NetlistError, SingularCircuitError, parse
 from spicelite.analysis.ac import ac
 from spicelite.analysis.dc import op
 from spicelite.analysis.tran import tran
+from spicelite.circuit import TranSpec
 
 BASE = "t\nV1 a 0 DC 1\n"
 
@@ -86,3 +87,72 @@ def test_resistor_with_both_ends_on_one_node_has_no_effect():
 def test_unsupported_features_fail_loudly_with_line_numbers(text, msg):
     with pytest.raises(NetlistError, match=f"line 3: {msg}"):
         parse(text)
+
+
+# ---- Milestones 8 and 9: MOSFETs, initial conditions, step control ------------------------------
+
+NMOS_MODEL = ".model nm NMOS (VTO=1 KP=100u)\n"
+
+
+def mos_net(device: str) -> str:
+    return f"t\nVd d 0 DC 3\nVg g 0 DC 2\n{device}\n{NMOS_MODEL}.op\n.end\n"
+
+
+def test_mosfet_with_w_and_l_omitted_uses_ngspices_100um_defaults():
+    # omitted == explicit, and W/L = 1 means beta = KP: Id = KP/2 (2 - 1)^2 = 50 uA in saturation (Vds = 3 > Vov = 1)
+    omitted = op(parse(mos_net("M1 d g 0 0 nm")))
+    explicit = op(parse(mos_net("M1 d g 0 0 nm W=100u L=100u")))
+    assert omitted.currents["vd"] == explicit.currents["vd"] == pytest.approx(-50e-6, rel=1e-6)
+    only_w = op(parse(mos_net("M1 d g 0 0 nm W=200u")))  # L still defaults: W/L = 2
+    assert only_w.currents["vd"] == pytest.approx(-100e-6, rel=1e-6)
+
+
+@pytest.mark.parametrize("device,msg", [("M1 d g 0 0 nm W=0 L=1u", "W must be positive"),
+                                        ("M1 d g 0 0 nm W=1u L=0", "L must be positive"),
+                                        ("M1 d g 0 0 nm W=-1u L=1u", "W must be positive")])
+def test_zero_or_negative_mosfet_dimensions_are_rejected_with_the_line_number(device, msg):
+    with pytest.raises(NetlistError, match=rf"line 4: 'm1': {msg}"):
+        parse(mos_net(device))
+
+
+def test_floating_gate_and_floating_bulk_are_reported_by_name():
+    with pytest.raises(SingularCircuitError, match=r"node\(s\) g have no DC path"):
+        op(parse(f"t\nVd d 0 DC 3\nM1 d g 0 0 nm W=1u L=1u\n{NMOS_MODEL}"))
+    with pytest.raises(SingularCircuitError, match=r"node\(s\) b have no DC path"):
+        op(parse(f"t\nVd d 0 DC 3\nVg g 0 DC 2\nM1 d g 0 b nm W=1u L=1u\n{NMOS_MODEL}"))
+
+
+def test_mosfet_gate_connected_through_a_resistor_is_not_floating():
+    r = op(parse(f"t\nVd d 0 DC 3\nVg g0 0 DC 2\nRg g0 g 1meg\nM1 d g 0 0 nm W=100u L=100u\n{NMOS_MODEL}"))
+    assert r.voltages["g"] == pytest.approx(2.0, rel=1e-9)  # no gate current: no drop across Rg
+
+
+def test_ic_on_a_nonexistent_node_is_a_netlist_error():
+    with pytest.raises(NetlistError, match=r"line 4: .ic refers to node 'zzz', which is not in the circuit"):
+        parse("t\nR1 a 0 1k\nC1 a 0 1u\n.ic v(zzz)=1\n.tran 1u 1m uic\n")
+
+
+def test_ic_without_uic_is_an_error_and_ic_on_a_capacitorless_node_has_no_effect_error():
+    with pytest.raises(NetlistError, match=r"\.ic is only used with `uic`"):
+        parse("t\nR1 a 0 1k\nC1 a 0 1u\n.ic v(a)=1\n.tran 1u 1m\n")
+    with pytest.raises(ValueError, match=r"\.ic on node\(s\) b has no effect"):
+        tran(parse("t\nV1 a 0 DC 1\nR1 a b 1k\nR2 b 0 1k\nC1 a 0 1u\n.ic v(b)=1\n.tran 1u 1m uic\n"))
+
+
+def test_uic_on_a_circuit_without_capacitors_starts_from_the_dc_values_at_zero_state():
+    # nothing to initialise: the resistive circuit simply follows its sources (no error, no spurious dynamics)
+    r = tran(parse("t\nV1 a 0 DC 1\nR1 a b 1k\nR2 b 0 1k\n.tran 100u 1m uic\n"))
+    assert np.allclose(r.voltages["b"], 0.5) and np.allclose(r.voltages["a"], 1.0)
+
+
+@pytest.mark.parametrize("adaptive", ["", ".options step=adaptive\n"])
+def test_tstep_larger_than_tstop_is_a_netlist_error(adaptive):
+    with pytest.raises(NetlistError, match=r"tstop \(0.001\) is below tstep \(1.0\)"):
+        parse(f"t\nV1 a 0 DC 1\nR1 a b 1k\nC1 b 0 1u\n{adaptive}.tran 1 1m\n")
+    with pytest.raises(ValueError, match="tstop"):
+        TranSpec(1.0, 1e-3)
+
+
+def test_adaptive_tstep_equal_to_tstop_takes_a_single_step():
+    r = tran(parse("t\nV1 a 0 DC 1\nR1 a b 1k\nC1 b 0 1u\n.tran 1m 1m\n"), adaptive=True)
+    assert len(r.time) >= 2 and r.time[-1] == 1e-3 and r.time[0] == 0.0

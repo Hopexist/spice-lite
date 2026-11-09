@@ -160,3 +160,7 @@ Each entry: choice, alternatives, why.
 ## D28. `stiff_adaptive` is excluded from the generic ngspice transient loop and gets its own test
 - ngspice runs with tmax = tstep / 10 = 0.1 ns there, i.e. ~5e8 points. `test_adaptive.py::test_stiff_adaptive_matches_ngspice`
   runs it with `tmax_fraction=1e4` (tmax = 10 us). No other example is excluded.
+
+## D29. Audit fixes
+- magnitude_db returns -inf for an exact zero without a numpy warning (a supply rail has no AC signal); the CLI had been printing the warning.
+- The report from the M5-M7 run was renamed REPORT_M5_M7.md; REPORT.md is the M8-M9 report.

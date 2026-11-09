@@ -79,8 +79,9 @@ def ac(circuit: Circuit, sweep: AcSweep | None = None, solver: str = "auto") -> 
 
 
 def magnitude_db(z: np.ndarray) -> np.ndarray:
-    """20 log10 |z|."""
-    return 20 * np.log10(np.abs(z))
+    """20 log10 |z|; an exactly zero value (a node with no AC signal, e.g. a supply rail) is -inf dB."""
+    with np.errstate(divide="ignore"):
+        return 20 * np.log10(np.abs(z))
 
 
 def phase_degrees(z: np.ndarray) -> np.ndarray:

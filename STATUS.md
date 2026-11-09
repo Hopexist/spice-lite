@@ -26,5 +26,5 @@ Baseline at start: 520 passed, 0 skipped.
 |---|---|---|---|
 | 1. M8 MOSFET | done | (see git log) | 602 passed, 0 skipped (537 passed, 65 skipped without ngspice) |
 | 2. M9 adaptive stepping | done | (see git log) | 635 passed, 0 skipped (564 passed, 71 skipped without ngspice) |
-| 3. Audit | not started | - | - |
-| 4. Report | not started | - | - |
+| 3. Audit | done | (see git log) | 648 passed, 0 skipped (577 passed, 71 skipped without ngspice) |
+| 4. Report | done (REPORT.md; previous run kept as REPORT_M5_M7.md) | (see git log) | - |

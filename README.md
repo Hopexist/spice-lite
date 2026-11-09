@@ -6,9 +6,9 @@ A small SPICE-style circuit simulator in Python. It parses a subset of the SPICE
 format and solves DC operating point, DC sweep, AC small-signal and transient analyses with
 Modified Nodal Analysis (MNA), using Newton-Raphson for diodes. Results are checked against ngspice.
 
-**Status:** parser, DC, AC, transient, diodes with Newton-Raphson (DC, AC, transient), `.ic`/UIC, and
-controlled sources with op-amps, a command line, sparse solves and a CI workflow are done (see the roadmap in
-`CLAUDE.md`).
+**Status:** parser, DC, AC, transient, diodes and level-1 MOSFETs with Newton-Raphson (DC, AC, transient), `.ic`/UIC,
+controlled sources with op-amps, adaptive time stepping, a command line, sparse solves and a CI workflow are done (see the
+roadmap in `CLAUDE.md`).
 
 ## Install and quick start
 
@@ -68,17 +68,18 @@ the executable.
 |---|---|
 | Elements | `R`, `C`, `L`, `D` (diode), `V` and `I` (DC, `AC mag [phase_deg]`, `PULSE(...)`, `SIN(...)`), controlled sources `E` (VCVS), `G` (VCCS), `F` (CCCS), `H` (CCVS); an op-amp is an `E` with gain 1e6; `M` (level-1 MOSFET) |
 | Models | `.model name D(IS=.. N=.. RS=..)`, `.model name NMOS\|PMOS(LEVEL=1 VTO=.. KP=.. LAMBDA=.. GAMMA=.. PHI=..)` |
-| Directives | `.op`, `.dc source start stop step`, `.ac dec\|oct\|lin`, `.tran tstep tstop [uic]`, `.ic v(node)=value`, `.options method=trap\|be`, `.end` |
+| Directives | `.op`, `.dc source start stop step`, `.ac dec\|oct\|lin`, `.tran tstep tstop [uic]`, `.ic v(node)=value`, `.options method=trap\|be step=fixed\|adaptive`, `.end` |
 | Values | SI suffixes `f p n u m k meg g t`, case-insensitive (`m` = milli, `meg` = mega) |
 | Linear circuits | one direct solve (DC), one solve per frequency (AC), LU factored once (transient); dense LAPACK for small circuits, sparse SuperLU from 60 unknowns up (`--solver` / `solver=` override) |
 | Diodes | Newton-Raphson with junction voltage limiting and a gmin-stepping fallback in `.op`/`.dc`; Newton at every step in `.tran` (with step halving); linearised at the bias point in `.ac` |
-| Transient methods | trapezoidal (default, 2nd order) and backward Euler (1st order, damped), fixed step |
+| Transient methods | trapezoidal (default, 2nd order) and backward Euler (1st order, damped); fixed step (default) or adaptive (local-truncation-error control) |
 | Initial state | DC solution, or with `uic` the `.ic` capacitor voltages and zero inductor currents |
 
 Anything else raises a `NetlistError` with the line number. Known limitations:
 
-* `PULSE` needs all seven values; the time step is fixed (a failing diode step is halved internally,
-  but output stays on the fixed grid).
+* `PULSE` needs all seven values; the time step is fixed unless `.options step=adaptive` (in a fixed run a failing
+  Newton step is halved internally, but output stays on the fixed grid). Adaptive stepping needs a nonzero source rise
+  time (a zero-rise jump leaves the trapezoidal history stale for one step).
 * The op-amp model has a flat gain at every frequency (no gain-bandwidth limit, slew rate, saturation or
   input/output impedance); an `F`/`H` can only sense a `V` source's current.
 * MOSFETs are level 1 only and have no intrinsic capacitances (Cgs, Cgd, Cgb, Cbd, Cbs) and no bulk-junction diodes

@@ -104,3 +104,10 @@ def test_installed_console_script_and_module_entry():
 @pytest.mark.parametrize("path", sorted(EXAMPLES.glob("*.cir")), ids=lambda p: p.name)
 def test_every_example_runs_through_the_cli(path, capsys):
     assert main(["run", str(path), "-q"]) == 0
+
+
+def test_ac_quiet_nodes_print_minus_inf_without_a_numpy_warning(capsys):
+    # vdd carries no AC signal (0 -> -inf dB): that is a result, not a warning
+    assert main(["run", str(EXAMPLES / "nmos_common_source.cir")]) == 0
+    cap = capsys.readouterr()
+    assert "warning" not in cap.err and "-inf" in cap.out
