@@ -1,0 +1,11 @@
+CMOS inverter, 0.1 pF load plus gate overlap capacitances, driven through a 1k gate resistance (Miller feed-through at the edges)
+Vdd vdd 0 DC 5
+Vin gen 0 DC 0 PULSE(0 5 2n 0.2n 0.2n 10n 24n)
+Rg gen in 1k
+MN out in 0 0 nm W=10u L=1u
+MP out in vdd vdd pm W=20u L=1u
+CL out 0 0.1p
+.model nm NMOS (LEVEL=1 VTO=1 KP=100u LAMBDA=0.02 CGSO=2n CGDO=2n)
+.model pm PMOS (LEVEL=1 VTO=-1 KP=50u LAMBDA=0.02 CGSO=2n CGDO=2n)
+.tran 0.0125n 30n
+.end

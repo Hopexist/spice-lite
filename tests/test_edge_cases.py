@@ -167,3 +167,13 @@ def test_mna_build_refuses_a_mosfet_instead_of_silently_dropping_it():
         build(c)
     with pytest.raises(NotImplementedError, match="m1"):
         solve(c)
+
+
+def test_parallel_capacitors_with_uic_start_from_the_ic_instead_of_failing():
+    """Found in the refactor run (and on main): with uic the t = 0 state holds every capacitor as a voltage source, so
+    two capacitors in parallel became two parallel voltage sources ("loop of voltage sources"). Same node pair, same
+    voltage: they must act as one capacitor of C1 + C2, here decaying with tau = 1k x 2 nF = 2 us. One is reversed
+    (n1/n2 swapped) to check the orientation, and the circuit also runs from a step without uic, as before."""
+    text = "t\nR1 a 0 1k\nC1 a 0 1n\nC2 0 a 1n\n.ic v(a)=1\n.tran 10n 10u uic\n"
+    r = tran(parse(text))
+    assert np.max(np.abs(r.voltages["a"] - np.exp(-r.time / 2e-6))) < 1e-5

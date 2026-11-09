@@ -40,7 +40,11 @@ TRAN_TOL = {"rc_step.cir": 5e-5, "rlc_ring.cir": 1e-3, "sin_rl.cir": 5e-4,
             # tolerance 5e-5. rlc_ring_adaptive: ADAPTIVE steps (rtol 1e-4, ~2150 steps vs ngspice ~20000);
             # the error is per-step LTE accumulated over ~20 ring periods (Q ~ 10), observed 4.7e-3 on v(b) and
             # 9.4e-3 on the loop current, tolerance 4e-2. (test_adaptive.py shows it falls ~ rtol^(2/3).)
-            "rc_ic_discharge.cir": 5e-5, "rlc_ring_adaptive.cir": 4e-2}
+            "rc_ic_discharge.cir": 5e-5, "rlc_ring_adaptive.cir": 4e-2,
+            # MOSFET overlap capacitances (refactor run): inverter, 0.1 pF load, CGSO = CGDO = 2 nF/m, 1k gate
+            # resistance (tau ~ 120 ps, resolved by the 12.5 ps step). Observed worst 4.4e-4 of peak (generator current);
+            # tolerance 2e-3. Its capacitance-free twin is checked in test_mosfet.py.
+            "cmos_inverter_overlap.cir": 2e-3}
 # ngspice linearises a diode at ITS bias point, which with default tolerances is only good to
 # ~1e-4 (observed 1.3e-4 relative on diode_ac). Tightening the options is harmless for linear
 # circuits and brings the diode example to 6e-11, so every AC comparison uses them.

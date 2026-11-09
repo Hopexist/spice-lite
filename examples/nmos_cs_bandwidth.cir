@@ -1,0 +1,11 @@
+NMOS common-source with a 10k source resistance: the gate-drain overlap capacitance is multiplied by the gain (Miller) and sets the bandwidth
+Vdd vdd 0 DC 5
+Vin src 0 DC 1.5 AC 1
+Rs src in 10k
+Rd vdd out 5k
+M1 out in 0 0 nm W=20u L=2u
+CL out 0 0.1p
+.model nm NMOS (LEVEL=1 VTO=1 KP=100u LAMBDA=0.02 CGSO=5n CGDO=5n)
+.op
+.ac dec 10 1k 10g
+.end

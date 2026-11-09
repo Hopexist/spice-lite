@@ -20,8 +20,8 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 
-from ..circuit import Circuit, ConvergenceError, Diode, Mosfet, Resistor, SingularCircuitError
-from ..elements import VT, diode_iv, mos_current, mos_threshold, stamp_diode, stamp_mosfet
+from ..circuit import Circuit, ConvergenceError, Diode, Mosfet, SingularCircuitError
+from ..elements import VT, diode_iv, mos_current, mos_threshold, stamp_diode, stamp_mosfet, stamp_of
 from ..mna import build, check_topology
 
 # Same tight tolerances the ngspice runner uses for its transient reference (ngspice's own
@@ -122,17 +122,13 @@ def limit_mos(raw: tuple[float, float, float], old: tuple[float, float, float], 
 
 
 def _expand(circuit: Circuit) -> Circuit:
-    """Give each diode with series resistance RS > 0 a hidden internal node: the resistor
-    runs anode -> "<name>#int" and the junction itself runs "<name>#int" -> cathode.
-    Idempotent: the junction diode is left with RS = 0, so expanding twice changes nothing."""
+    """Replace each element by its registered expansion (elements.Stamp.expand): a diode with RS > 0 gets a hidden
+    internal node "<name>#int" and resistor, a MOSFET its capacitances as hidden capacitors "<name>#cgs" ...
+    Idempotent: an expanded device is a fixed point, so expanding twice changes nothing."""
     out = []
     for e in circuit.elements:
-        if isinstance(e, Diode) and e.model.RS > 0:
-            mid = f"{e.name}#int"
-            out += [Resistor(f"{e.name}#rs", e.anode, mid, e.model.RS),
-                    Diode(e.name, mid, e.cathode, e.model_name, replace(e.model, RS=0.0))]  # RS now lives in the resistor
-        else:
-            out.append(e)
+        expand = stamp_of(e).expand
+        out += expand(e) if expand else [e]
     return replace(circuit, elements=out)
 
 

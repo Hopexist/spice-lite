@@ -78,7 +78,8 @@ def test_golden_file_covers_every_pre_m5_example():
 def test_m7_golden_file_covers_every_pre_m8_m9_example():
     pre_m8 = {p.name for p in (HERE.parent / "examples").glob("*.cir")} - {
         "nmos_iv.cir", "cmos_inverter_vtc.cir", "cmos_inverter_tran.cir", "nmos_common_source.cir",
-        "rc_ic_discharge.cir", "rlc_ring_adaptive.cir", "stiff_adaptive.cir"}
+        "rc_ic_discharge.cir", "rlc_ring_adaptive.cir", "stiff_adaptive.cir",
+        "cmos_inverter_overlap.cir", "nmos_cs_bandwidth.cir"}  # added with the MOSFET capacitances
     assert set(GOLDEN_M7) == pre_m8
 
 

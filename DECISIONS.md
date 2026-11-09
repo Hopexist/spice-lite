@@ -283,3 +283,24 @@ and a third dispatch in `ac._diode_solver`. The remaining sites are per-type *ru
 The 10% budget is judged on a same-session A/B (old `src/` from `git archive` vs new, alternated, best of N), because the stand-alone
 benchmark moved by up to 39% between runs on an idle machine. Result: every workload within ±6% (table in REPORT.md). The registry lookup is
 inlined on the assembly path (`STAMPS.get(type(e))`); per-step RHS functions are resolved once before the time loop.
+
+## D42: MOSFET capacitances as hidden linear capacitors (Phase 3)
+- **Choice:** `Stamp.expand` (new registry hook; the diode's RS expansion moved there too) turns a MOSFET into itself plus
+  `Capacitor("<name>#cgs" ...)` elements: Cgs = CGSO W, Cgd = CGDO W, Cgb = CGBO L (ngspice's scaling with LD = 0), Cbd = CBD,
+  Cbs = CBS. Zero values add nothing, so a model without capacitances is exactly the M8 device (bit-for-bit test + goldens).
+- **Alternatives:** a MOSFET-specific companion stamp in `tran` and a jωC stamp in `ac` (two new code paths, the duplication this
+  run removed); full Meyer charge model (needs TOX and region-dependent charge partitioning, out of scope).
+- **Why:** capacitors already have one stamp, one companion model, history currents and `.ic` handling; reusing them means AC and both
+  transient modes are correct by construction. Only the overlap terms are compared with ngspice: with CBD/CBS set ngspice applies the
+  depletion law, which this version does not (README limitation, `shortcut:` note in elements.py).
+- **The inverter example is driven through 1k.** With the gate on an ideal source, the PMOS Cgs sits between two ideal sources and
+  fixed-step trapezoidal integration rings undamped on its current (alternating 2.4 / 0.6 mA around ngspice's 1.6 mA: 11 % of peak
+  on i(vdd)); 50 ohm damps the ringing but leaves the RC (6 ps) under-resolved by the 12.5 ps step; 1k (tau ~ 120 ps) is resolved:
+  worst 4.4e-4 of peak, tolerance 2e-3. Fixing the integrator (a backward-Euler step after each corner) would change existing results,
+  which this run forbids; recorded as a README limitation and a next step.
+
+## D43: Parallel capacitors with uic (bug found in Phase 3, present on main)
+`_frozen_state_system` held each capacitor as a voltage source, so two capacitors on the same node pair were a "loop of voltage
+sources" and `.tran ... uic` failed. Fix: one held source per node pair; its current is split by capacitance (same dv/dt), with the
+sign flipped for a reversed one. A single capacitor per node pair goes through the same code with ratio 1, so existing results are
+unchanged (goldens). A capacitor directly across a voltage source with uic is still an error: the two can disagree (inconsistent .ic).

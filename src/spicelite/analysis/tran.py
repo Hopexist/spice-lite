@@ -89,18 +89,33 @@ def _frozen_state_system(ex: Circuit, vc: dict[str, float], il: dict[str, float]
     at current il[name]. Returns (node voltages, branch currents by name); a held capacitor's
     branch current is its current n1 -> n2, and an inductor's voltage is v(n1) - v(n2).
     Raises SingularCircuitError if the held circuit has a source/capacitor loop."""
-    held = replace(ex, elements=[
-        VoltageSource(e.name, e.n1, e.n2, vc[e.name]) if isinstance(e, Capacitor)
-        else CurrentSource(e.name, e.n1, e.n2, il[e.name]) if isinstance(e, Inductor) else e
-        for e in ex.elements])
+    # Capacitors in parallel share one voltage: hold the node pair with ONE source (two would be a loop of voltage
+    # sources) and split its current by capacitance, since every one of them sees the same dv/dt.
+    groups: dict[frozenset, list[Capacitor]] = {}
+    for e in ex.elements:
+        if isinstance(e, Capacitor):
+            groups.setdefault(frozenset((e.n1, e.n2)), []).append(e)
+    elements = []
+    for e in ex.elements:
+        if isinstance(e, Capacitor):
+            if groups[frozenset((e.n1, e.n2))][0] is e:
+                elements.append(VoltageSource(e.name, e.n1, e.n2, vc[e.name]))
+        else:
+            elements.append(CurrentSource(e.name, e.n1, e.n2, il[e.name]) if isinstance(e, Inductor) else e)
+    held = replace(ex, elements=elements)
     if held.nonlinear():
         r = solve_nonlinear(held, t=t)
         x, idx = r.x, r.idx
     else:
         x, idx = solve(held, t=t, solver=solver), held.node_index()
     n = len(idx)
-    return ({node: float(x[i]) for node, i in idx.items()},
-            {e.name: float(x[n + k]) for k, e in enumerate(held.branch_elements())})
+    currents = {e.name: float(x[n + k]) for k, e in enumerate(held.branch_elements())}
+    for caps in groups.values():
+        lead, total = caps[0], sum(c.value for c in caps)
+        for c in caps[1:]:  # same orientation as the held one, or reversed (n1/n2 swapped)
+            currents[c.name] = currents[lead.name] * c.value / total * (1 if c.n1 == lead.n1 else -1)
+        currents[lead.name] *= lead.value / total
+    return {node: float(x[i]) for node, i in idx.items()}, currents
 
 
 def tran(circuit: Circuit, spec: TranSpec | None = None, method: str | None = None,
