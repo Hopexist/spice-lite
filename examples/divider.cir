@@ -1,0 +1,5 @@
+Voltage divider: v(out) = 10 * 2k/(1k+2k) = 6.6667 V
+V1 in 0 DC 10
+R1 in out 1k
+R2 out 0 2k
+.end
