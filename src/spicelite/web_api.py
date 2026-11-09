@@ -187,7 +187,7 @@ def _op(circuit: Circuit, limits: Limits, solver: str) -> dict:
 
 def _dc(circuit: Circuit, limits: Limits, solver: str) -> dict:
     sweep = circuit.dc
-    _work_ok("dc", len(sweep.values()), circuit, limits)
+    _work_ok("dc", sweep.count(), circuit, limits)
     src = next(e for e in circuit.elements if e.name == sweep.source)
     r = dc_sweep(circuit, solver=solver)
     unit = "V" if isinstance(src, VoltageSource) else "A"
@@ -199,7 +199,7 @@ def _dc(circuit: Circuit, limits: Limits, solver: str) -> dict:
 
 
 def _ac(circuit: Circuit, limits: Limits, solver: str) -> dict:
-    _work_ok("ac", len(circuit.ac.frequencies()), circuit, limits)
+    _work_ok("ac", circuit.ac.count(), circuit, limits)
     r = ac(circuit, solver=solver)
     return {"type": "ac", "title": ".ac frequency sweep",
             "x": {"name": "frequency", "unit": "Hz", "log": True, "values": _clean(r.freqs)},

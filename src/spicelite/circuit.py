@@ -304,6 +304,8 @@ class TranSpec:
     uic: bool = False
 
     def __post_init__(self) -> None:
+        if not (math.isfinite(self.tstep) and math.isfinite(self.tstop)):
+            raise ValueError(f"tstep and tstop must be finite, got {self.tstep} and {self.tstop}")
         if self.tstep <= 0 or self.tstop <= 0:
             raise ValueError(f"tstep and tstop must be positive, got {self.tstep} and {self.tstop}")
         if self.tstop < self.tstep:
@@ -329,13 +331,19 @@ class AcSweep:
         if self.fstop < self.fstart:
             raise ValueError(f"fstop ({self.fstop}) is below fstart ({self.fstart})")
 
+    def count(self) -> int:
+        """Number of frequencies, computed without building them (so limits can be checked first)."""
+        if self.kind == "lin":
+            return self.points
+        base = 10.0 if self.kind == "dec" else 2.0
+        # Same point count as ngspice (floor(...+0.25) tolerates round-off in the log).
+        return int(np.floor(self.points * np.log(self.fstop / self.fstart) / np.log(base) + 0.25)) + 1
+
     def frequencies(self) -> np.ndarray:
         if self.kind == "lin":
             return np.linspace(self.fstart, self.fstop, self.points)
         base = 10.0 if self.kind == "dec" else 2.0
-        # Same point count as ngspice (floor(...+0.25) tolerates round-off in the log).
-        n = int(np.floor(self.points * np.log(self.fstop / self.fstart) / np.log(base) + 0.25)) + 1
-        return self.fstart * base ** (np.arange(n) / self.points)
+        return self.fstart * base ** (np.arange(self.count()) / self.points)
 
 
 @dataclass
@@ -353,9 +361,12 @@ class DcSweep:
         if (self.stop - self.start) * self.step < 0:
             raise ValueError(f"step {self.step:g} has the wrong sign to go from {self.start:g} to {self.stop:g}")
 
+    def count(self) -> int:
+        """Number of sweep points, computed without building them."""
+        return int(np.floor((self.stop - self.start) / self.step + 1e-9)) + 1  # 1e-9: round-off guard
+
     def values(self) -> np.ndarray:
-        n = int(np.floor((self.stop - self.start) / self.step + 1e-9)) + 1  # 1e-9: round-off guard
-        return self.start + self.step * np.arange(n)
+        return self.start + self.step * np.arange(self.count())
 
 
 class ConvergenceError(Exception):

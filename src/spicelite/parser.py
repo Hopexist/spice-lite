@@ -49,7 +49,13 @@ def parse_value(text: str, line: int | None = None) -> float:
     if not m:
         raise NetlistError(f"bad value {text!r}", line)
     # Scale in decimal so "10u" is exactly the float 1e-05 (10 * 1e-6 would be 9.999999999999999e-06).
-    return float(Decimal(m.group(1)).scaleb(_SUFFIX.get(m.group(2), 0)))
+    try:
+        value = float(Decimal(m.group(1)).scaleb(_SUFFIX.get(m.group(2), 0)))
+    except ArithmeticError:  # decimal.Overflow: exponent beyond Decimal's own range
+        value = math.inf
+    if not math.isfinite(value):  # also catches 1e400, which float() turns into inf silently
+        raise NetlistError(f"value {text!r} is out of range", line)
+    return value
 
 
 def _logical_lines(text: str) -> list[tuple[int, str]]:

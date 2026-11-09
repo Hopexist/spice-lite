@@ -54,6 +54,8 @@ from ..sparse import Triplets, check_solver, factor, use_sparse
 from .adaptive import StepControl, adaptive_loop, breakpoints
 from .newton import ABSTOL, MAX_ITER, RELTOL, VNTOL, _expand, _newton, solve_nonlinear
 
+MAX_FIXED_STEPS = 20_000_000  # ~0.5 GB for a 3-unknown circuit; beyond this a fixed grid is a typo, not a plan
+
 MAX_CUTS = 8  # a failing step may be halved up to 8 times: down to 1/256 of the nominal step
 _T0_PLUS = 1e-300  # "just after t = 0": a source that steps at t = 0 already shows its new value
 
@@ -145,7 +147,15 @@ def tran(circuit: Circuit, spec: TranSpec | None = None, method: str | None = No
         adaptive = circuit.step_control == "adaptive"
     ctl = adaptive if isinstance(adaptive, StepControl) else (StepControl() if adaptive else None)
 
-    n_steps = math.ceil(spec.tstop / spec.tstep - 1e-9)
+    if max_iter < 1:
+        raise ValueError(f"max_iter must be at least 1, got {max_iter}")
+    if ctl is not None and ctl.hmin is not None and ctl.hmin > spec.tstop:
+        raise ValueError(f"StepControl hmin {ctl.hmin:g} is larger than tstop {spec.tstop:g}")
+    ratio = spec.tstop / spec.tstep
+    if not math.isfinite(ratio) or (ctl is None and ratio > MAX_FIXED_STEPS):  # fixed mode allocates up front
+        raise ValueError(f"tstop/tstep = {ratio:.3g} steps is too large (fixed-step limit {MAX_FIXED_STEPS:,}): "
+                         "raise tstep or lower tstop")
+    n_steps = math.ceil(ratio - 1e-9)
     h = spec.tstop / n_steps
     if ctl is None:  # adaptive stepping lands on every PULSE edge instead
         _warn_if_edges_unresolved(circuit, h)
