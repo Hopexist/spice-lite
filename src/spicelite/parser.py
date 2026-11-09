@@ -19,6 +19,8 @@ from .circuit import (
     Diode,
     DiodeModel,
     Inductor,
+    Mosfet,
+    MosModel,
     NetlistError,
     Pulse,
     Resistor,
@@ -34,6 +36,7 @@ _WAVE = re.compile(r"\b(pulse|sin)\s*\(([^)]*)\)")
 _METHOD = re.compile(r"method=(trap|be)")
 _MODEL = re.compile(r"\.model\s+(\S+)\s+([a-z]+)\s*\(?([^)]*)\)?\s*$")
 _MODEL_PARAMS = ("is", "n", "rs")
+_MOS_PARAMS = ("level", "vto", "kp", "lambda", "gamma", "phi")
 _TWO_TERMINAL = {"r": (Resistor, "resistance"), "c": (Capacitor, "capacitance"),
                  "l": (Inductor, "inductance")}
 
@@ -125,27 +128,54 @@ def _parse_tran(tokens: list[str], num: int) -> TranSpec:
         raise NetlistError(str(err), num) from None
 
 
-def _parse_model(low: str, num: int) -> DiodeModel:
-    """`.model name D(IS=.. N=.. RS=..)`; type and parameter names are case-insensitive (the
-    caller lowercases the line). Only the D type and the IS, N, RS parameters exist so far."""
+def _parse_model(low: str, num: int) -> DiodeModel | MosModel:
+    """`.model name D(IS=.. N=.. RS=..)` or `.model name NMOS|PMOS(LEVEL=1 VTO=.. KP=.. LAMBDA=.. GAMMA=.. PHI=..)`;
+    type and parameter names are case-insensitive (the caller lowercases the line)."""
     m = _MODEL.match(low)
     if not m:
-        raise NetlistError(".model needs: .model <name> D(IS=.. N=.. RS=..)", num)
+        raise NetlistError(".model needs: .model <name> D|NMOS|PMOS(<param>=<value> ...)", num)
     name, kind, body = m.groups()
-    if kind != "d":
-        raise NetlistError(f"unsupported model type {kind!r}; only D (diode) is supported", num)
+    if kind not in ("d", "nmos", "pmos"):
+        raise NetlistError(f"unsupported model type {kind!r}; supported: D, NMOS, PMOS", num)
+    mos = kind != "d"
+    allowed = _MOS_PARAMS if mos else _MODEL_PARAMS
     values: dict[str, float] = {}
     for item in re.sub(r"\s*=\s*", "=", body.replace(",", " ")).split():
         key, eq, val = item.partition("=")
-        if not eq or key not in _MODEL_PARAMS:
-            raise NetlistError(f"unsupported diode parameter {item!r}; supported: IS, N, RS", num)
+        if not eq or key not in allowed:
+            raise NetlistError(f"unsupported {'MOS' if mos else 'diode'} parameter {item!r}; supported: "
+                               + ", ".join(k.upper() for k in allowed), num)
         if key in values:
-            raise NetlistError(f"duplicate diode parameter {key.upper()!r}", num)
+            raise NetlistError(f"duplicate model parameter {key.upper()!r}", num)
         values[key] = parse_value(val, num)
     try:
+        if mos:
+            if values.pop("level", 1) != 1:
+                raise NetlistError("only LEVEL=1 (Shichman-Hodges) MOSFET models are supported", num)
+            return MosModel(name, kind, **{k.upper(): v for k, v in values.items()})
         return DiodeModel(name, **{k.upper(): v for k, v in values.items()})
     except ValueError as err:
         raise NetlistError(str(err), num) from None
+
+
+def _parse_mosfet(low: str, num: int) -> Mosfet:
+    """`M<name> drain gate source bulk model [W=..] [L=..]` (the caller lowercases the line). W and L
+    default to ngspice's 100 um when omitted."""
+    tokens = re.sub(r"\s*=\s*", "=", low).split()
+    pos = [t for t in tokens[1:] if "=" not in t]
+    if len(pos) != 5:
+        raise NetlistError(f"{tokens[0]!r} needs exactly: drain gate source bulk model [W=..] [L=..]", num)
+    dims: dict[str, float] = {}
+    for item in (t for t in tokens[1:] if "=" in t):
+        key, _, val = item.partition("=")
+        if key not in ("w", "l"):
+            raise NetlistError(f"unsupported MOSFET parameter {item!r}; supported: W, L", num)
+        if key in dims:
+            raise NetlistError(f"duplicate MOSFET parameter {key.upper()!r}", num)
+        dims[key] = parse_value(val, num)
+        if dims[key] <= 0:
+            raise NetlistError(f"{tokens[0]!r}: {key.upper()} must be positive", num)
+    return Mosfet(tokens[0], *pos, **{k.upper(): v for k, v in dims.items()})
 
 
 def _parse_dc(tokens: list[str], num: int) -> DcSweep:
@@ -254,11 +284,15 @@ def parse(text: str) -> Circuit:
                 continue
             raise NetlistError(f"unsupported directive {name!r}", num)
         kind = name[0]
-        if kind not in "rclvidegfh":
+        if kind not in "rclvidegfhm":
             raise NetlistError(f"unsupported element {name!r}", num)
         if name in seen:
             raise NetlistError(f"duplicate element name {name!r}", num)
         seen.add(name)
+        if kind == "m":
+            circuit.elements.append(_parse_mosfet(low, num))
+            diode_lines[name] = num  # same end-of-netlist model lookup as a diode
+            continue
         if kind in "egfh":  # controlled sources have their own, fixed field counts
             circuit.elements.append(_parse_controlled(kind, tokens, num))
             if kind in "fh":
@@ -284,10 +318,15 @@ def parse(text: str) -> Circuit:
             cls = VoltageSource if kind == "v" else CurrentSource
             circuit.elements.append(cls(name, a, b, *_source_values(tokens, num), wave))
     # Checks that need the whole netlist (a .model or the swept source may come after its user).
-    for d in circuit.diodes():
-        if d.model_name not in circuit.models:
-            raise NetlistError(f"diode {d.name!r} uses unknown model {d.model_name!r}", diode_lines[d.name])
-        d.model = circuit.models[d.model_name]
+    for d in circuit.nonlinear():
+        what, want = ("diode", DiodeModel) if isinstance(d, Diode) else ("MOSFET", MosModel)
+        model = circuit.models.get(d.model_name)
+        if model is None:
+            raise NetlistError(f"{what} {d.name!r} uses unknown model {d.model_name!r}", diode_lines[d.name])
+        if not isinstance(model, want):
+            raise NetlistError(f"{what} {d.name!r} uses model {d.model_name!r}, which is not a "
+                               f"{'D' if want is DiodeModel else 'NMOS/PMOS'} model", diode_lines[d.name])
+        d.model = model
     if circuit.dc is not None:
         src = next((e for e in circuit.elements if e.name == circuit.dc.source), None)
         if not isinstance(src, (VoltageSource, CurrentSource)):

@@ -214,7 +214,50 @@ class CCVS:
     rm: float
 
 
-Element = (Resistor | Capacitor | Inductor | VoltageSource | CurrentSource | Diode
+@dataclass
+class MosModel:
+    """`.model name NMOS|PMOS (LEVEL=1 VTO=.. KP=.. LAMBDA=.. GAMMA=.. PHI=..)`, Shichman-Hodges.
+    Defaults are ngspice's: VTO 0 V, KP 2e-5 A/V^2, LAMBDA 0 1/V, GAMMA 0 sqrt(V), PHI 0.6 V.
+    VTO is written with its natural sign (negative for an enhancement PMOS), as in ngspice."""
+
+    name: str
+    kind: str  # "nmos" or "pmos"
+    VTO: float = 0.0
+    KP: float = 2e-5
+    LAMBDA: float = 0.0
+    GAMMA: float = 0.0
+    PHI: float = 0.6
+
+    def __post_init__(self) -> None:
+        if self.KP <= 0 or self.PHI <= 0 or self.GAMMA < 0 or self.LAMBDA < 0:
+            raise ValueError("MOS model needs KP > 0, PHI > 0, GAMMA >= 0 and LAMBDA >= 0")
+
+    @property
+    def sign(self) -> int:
+        """+1 for NMOS, -1 for PMOS: a PMOS is an NMOS with every voltage and current negated."""
+        return 1 if self.kind == "nmos" else -1
+
+
+# ngspice's default channel width and length (.options defw / defl), used when W or L is omitted
+DEFAULT_W = DEFAULT_L = 1e-4
+
+
+@dataclass
+class Mosfet:
+    """Level-1 MOSFET. `model` is filled in by the parser. beta = KP W / L."""
+
+    name: str
+    drain: str
+    gate: str
+    source: str
+    bulk: str
+    model_name: str
+    W: float = DEFAULT_W
+    L: float = DEFAULT_L
+    model: MosModel | None = field(default=None, compare=False, repr=False)
+
+
+Element = (Resistor | Capacitor | Inductor | VoltageSource | CurrentSource | Diode | Mosfet
            | VCVS | VCCS | CCCS | CCVS)
 
 OPAMP_GAIN = 1e6  # default open-loop gain of the op-amp model
@@ -310,7 +353,7 @@ class Circuit:
     tran: TranSpec | None = None  # the `.tran` directive, if any
     method: str = "trap"  # `.options method=trap|be`: integration method for .tran
     dc: DcSweep | None = None  # the `.dc` directive, if any
-    models: dict[str, DiodeModel] = field(default_factory=dict)  # `.model` cards by name
+    models: dict[str, DiodeModel | MosModel] = field(default_factory=dict)  # `.model` cards by name
     ic: dict[str, float] = field(default_factory=dict)  # `.ic v(node)=volts` initial conditions (UIC only)
 
     def node_index(self) -> dict[str, int]:
@@ -330,6 +373,13 @@ class Circuit:
 
     def diodes(self) -> list[Diode]:
         return [e for e in self.elements if isinstance(e, Diode)]
+
+    def mosfets(self) -> list[Mosfet]:
+        return [e for e in self.elements if isinstance(e, Mosfet)]
+
+    def nonlinear(self) -> list[Diode | Mosfet]:
+        """Elements that need Newton-Raphson (a linear circuit has none)."""
+        return [e for e in self.elements if isinstance(e, (Diode, Mosfet))]
 
     def branch_elements(self) -> list[VoltageSource | Inductor]:
         """Elements that carry an extra MNA unknown (their branch current), in netlist order.
@@ -351,4 +401,6 @@ def element_nodes(e: Element) -> tuple[str, ...]:
         return e.n_plus, e.n_minus
     if isinstance(e, Diode):
         return e.anode, e.cathode
+    if isinstance(e, Mosfet):  # channel terminals first, then the controlling gate and bulk
+        return e.drain, e.source, e.gate, e.bulk
     return e.n1, e.n2

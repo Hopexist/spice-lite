@@ -32,7 +32,7 @@ class DcSweepResult:
 def _solve_point(circuit: Circuit, x0: np.ndarray | None, solver: str = "auto"):
     """One DC solution -> (x, node index, iterations, strategy). Linear circuits take the
     direct path (one dense or sparse LU solve); circuits with diodes go through Newton-Raphson."""
-    if circuit.diodes():
+    if circuit.nonlinear():
         r = solve_nonlinear(circuit, x0=x0)
         return r.x, r.idx, r.iterations, r.strategy
     return solve(circuit, solver=solver), circuit.node_index(), 0, "linear"

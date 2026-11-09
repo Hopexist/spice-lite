@@ -13,8 +13,8 @@ from spicelite.sparse import SPARSE_MIN_SIZE, Triplets, use_sparse
 
 EXAMPLES_DIR = Path(__file__).parent.parent / "examples"
 EXAMPLES = sorted(EXAMPLES_DIR.glob("*.cir"))
-LINEAR = [p for p in EXAMPLES if not parse(p.read_text()).diodes()]
-DIODE = [p for p in EXAMPLES if parse(p.read_text()).diodes()]
+LINEAR = [p for p in EXAMPLES if not parse(p.read_text()).nonlinear()]
+DIODE = [p for p in EXAMPLES if parse(p.read_text()).nonlinear()]  # diodes and MOSFETs: Newton, so dense
 
 # Dense (LAPACK partial-pivot LU) and sparse (SuperLU, column ordering) are both direct solvers
 # on the same matrix, so they differ only by round-off: ~1e-15 relative on these well-scaled

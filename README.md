@@ -66,8 +66,8 @@ the executable.
 
 | | |
 |---|---|
-| Elements | `R`, `C`, `L`, `D` (diode), `V` and `I` (DC, `AC mag [phase_deg]`, `PULSE(...)`, `SIN(...)`), controlled sources `E` (VCVS), `G` (VCCS), `F` (CCCS), `H` (CCVS); an op-amp is an `E` with gain 1e6 |
-| Models | `.model name D(IS=.. N=.. RS=..)` (only the diode so far) |
+| Elements | `R`, `C`, `L`, `D` (diode), `V` and `I` (DC, `AC mag [phase_deg]`, `PULSE(...)`, `SIN(...)`), controlled sources `E` (VCVS), `G` (VCCS), `F` (CCCS), `H` (CCVS); an op-amp is an `E` with gain 1e6; `M` (level-1 MOSFET) |
+| Models | `.model name D(IS=.. N=.. RS=..)`, `.model name NMOS\|PMOS(LEVEL=1 VTO=.. KP=.. LAMBDA=.. GAMMA=.. PHI=..)` |
 | Directives | `.op`, `.dc source start stop step`, `.ac dec\|oct\|lin`, `.tran tstep tstop [uic]`, `.ic v(node)=value`, `.options method=trap\|be`, `.end` |
 | Values | SI suffixes `f p n u m k meg g t`, case-insensitive (`m` = milli, `meg` = mega) |
 | Linear circuits | one direct solve (DC), one solve per frequency (AC), LU factored once (transient); dense LAPACK for small circuits, sparse SuperLU from 60 unknowns up (`--solver` / `solver=` override) |
@@ -81,6 +81,9 @@ Anything else raises a `NetlistError` with the line number. Known limitations:
   but output stays on the fixed grid).
 * The op-amp model has a flat gain at every frequency (no gain-bandwidth limit, slew rate, saturation or
   input/output impedance); an `F`/`H` can only sense a `V` source's current.
+* MOSFETs are level 1 only and have no intrinsic capacitances (Cgs, Cgd, Cgb, Cbd, Cbs) and no bulk-junction diodes
+  beyond their GMIN conductance: the switching delay of a CMOS stage comes only from the load capacitor you add, and a
+  bulk biased more than ~0.6 V above a channel terminal does not conduct as it does in ngspice.
 * `.ic` only sets capacitor voltages (a node with no capacitor on it is rejected) and is only used
   with `uic`; without `uic` an `.ic` line is an error rather than being silently ignored.
 * A loop made only of voltage sources and capacitors (or inductors and current sources only) has no
@@ -221,6 +224,38 @@ match `f0 sqrt(1 - 1/(2Q^2))` and `Q / sqrt(1 - 1/(4Q^2))`.
 
 Against ngspice: linear DC and `.dc` agree exactly, AC to 3e-15 relative, and transient to 1e-5 of peak
 (the O(h^2) trapezoidal error, as for the other RC circuits; the integrator is 5e-7).
+
+## MOSFETs (level 1, Shichman-Hodges)
+
+`M name drain gate source bulk model [W=..] [L=..]` with `.model name NMOS|PMOS (LEVEL=1 VTO KP LAMBDA GAMMA PHI)`
+(W and L default to ngspice's 100 um; VTO keeps its natural sign, so an enhancement PMOS has `VTO=-1`). With
+beta = KP W/L, Vov = Vgs - Vth and Vth = VTO + GAMMA (sqrt(PHI - Vbs) - sqrt(PHI)):
+
+| Region | Condition | Id |
+|---|---|---|
+| cutoff | Vov <= 0 | 0 |
+| triode | Vds < Vov | beta (Vov Vds - Vds^2/2)(1 + LAMBDA Vds) |
+| saturation | Vds >= Vov | beta/2 Vov^2 (1 + LAMBDA Vds) |
+
+A PMOS is the NMOS equations with every voltage and current negated; if Vds changes sign the drain and source swap roles
+(the channel is symmetric). Newton linearises the device into gm, gds and gmbs plus a current source (`elements.stamp_mosfet`),
+limits Vgs and Vds each iteration exactly as SPICE's `fetlim` and `limvds` do, and falls back to gmin stepping. In AC
+the device is its three conductances at the bias point. Both bulk junctions contribute only their 1e-12 S GMIN
+(this is what keeps a node of cut-off devices solvable, and matches ngspice's default). Circuits with MOSFETs stay on the dense solver.
+
+![](docs/iv_nmos.png)
+
+![](docs/transfer_cmos_inverter.png)
+
+| Example | Analysis | Tolerance vs ngspice | Observed worst |
+|---|---|---|---|
+| `nmos_iv` (4 gate voltages) | `.dc` | 1e-9 of peak | 8e-12 |
+| `cmos_inverter_vtc` | `.dc` | 5e-8 of peak | 6.5e-10 (3.3e-9 V at the switching point) |
+| `nmos_common_source` | `.op` / `.ac` | 1e-9 / 1e-6 relative | 1e-11 / ~1e-9 |
+| `cmos_inverter_tran` | `.tran` (0.0125 ns) | 1.2e-3 of peak | 2.6e-4 (O(h^2): 4x per halving of h) |
+| body-effect follower, PMOS load, reverse conduction (inline netlists) | `.dc` | 1e-8 of peak | see `tests/test_mosfet.py` |
+
+![](docs/wave_cmos_inverter_tran.png)
 
 ## Sparse solves and benchmark
 

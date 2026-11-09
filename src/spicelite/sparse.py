@@ -37,8 +37,8 @@ def check_solver(circuit, solver: str) -> None:
     iteration, so diode circuits stay dense; "auto" quietly picks dense for them, "sparse" says no.
     Upgrade by stamping the diode companions into a sparse pattern if big diode circuits matter."""
     use_sparse(0, solver)
-    if solver == "sparse" and circuit.diodes():
-        raise ValueError("solver='sparse' is not supported for circuits with diodes "
+    if solver == "sparse" and circuit.nonlinear():
+        raise ValueError("solver='sparse' is not supported for circuits with diodes or MOSFETs "
                          "(Newton-Raphson uses dense matrices); use 'dense' or 'auto'")
 
 

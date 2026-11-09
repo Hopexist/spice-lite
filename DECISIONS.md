@@ -91,3 +91,40 @@ Each entry: choice, alternatives, why.
 ## D14. CLAUDE.md command `python -m spicelite.ngspice ...` replaced by a pytest command
 - **Why:** `ngspice.py` has no `__main__`, so the documented command never worked. A `--compare` CLI mode is the
   obvious feature if you want it (see REPORT.md).
+
+
+# M8-M9 run (branch `m8-mosfet-adaptive`)
+
+## D15. Branch cut from `overnight-m5-m7`, not main
+- **Choice:** `main` does not contain M7 (the merge was blocked by the permission classifier), so the branch
+  starts at `overnight-m5-m7` (35ecdb5), as the brief allowed.
+
+## D16. ngspice "present" again means reachable through `$NGSPICE`
+- Same as D1: `which ngspice` finds nothing, the bundled ngspice-41 is used and every committing run needs 0 skips.
+
+## D17. Bulk junctions are reduced to GMIN conductances; no intrinsic capacitances
+- **Choice:** each MOSFET stamps GMIN (1e-12 S) from bulk to drain and bulk to source, nothing else of ngspice's two
+  bulk diodes. Cgs/Cgd/Cgb/Cbd/Cbs are skipped (`shortcut:` in `elements.py`, README limitation).
+- **Alternatives:** full junction diodes (IS = 1e-14, exponential); a GMIN drain-source shunt instead.
+- **Why:** ngspice's default-options results differ from the bare square law by exactly these GMIN terms (5e-12 A at
+  Vds = 5 V on a 1.2 mA device), so modelling them lets the comparison use ngspice's defaults. It also stops a node touching
+  only cut-off devices from being singular. A forward-biased bulk junction is the known gap (a test documents it).
+
+## D18. VTO keeps its sign (negative for PMOS); W/L default to 100 um like ngspice
+- Matches ngspice's cards, so the same `.model` text runs in both tools. W or L of zero or less is a NetlistError.
+
+## D19. Singular-start fix lives in the device model, not in the Newton fallback
+- A MOSFET circuit whose output node touches only cut-off devices made the first Newton matrix singular (the
+  fallback only catches ConvergenceError). The GMIN junction conductances (D17) fix it at the source.
+
+## D20. Newton limiting follows ngspice's mos1load
+- `fetlim` on Vgs (or Vgd when reversed) then `limvds`, in the NMOS frame; "limited" is judged with a 1e-12 tolerance
+  because rebuilding Vds through Vgd changes it by round-off (an exact comparison made Newton never converge).
+
+## D21. Tests that filtered examples by `.diodes()` now filter by `.nonlinear()`
+- `tests/test_vs_ngspice.py` and `tests/test_sparse.py` treated "no diodes" as "linear"; MOSFET examples are nonlinear too.
+  This widens the nonlinear group, it does not weaken any test.
+
+## D22. A second golden file freezes M7 results
+- `tests/golden_m1_m7.json` (26 examples, from commit 35ecdb5 via `git archive`) joins the v0.6 file, so the controlled-source
+  examples are protected against later changes as well.

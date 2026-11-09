@@ -14,3 +14,17 @@ Test command for every committing run: `NGSPICE=<bundled ngspice_con.exe> python
 
 ## Blocked / failed items
 (none yet)
+
+
+# M8-M9 run (branch `m8-mosfet-adaptive`, cut from `overnight-m5-m7` @ 35ecdb5 because main lacks M7)
+
+Started: Mon Nov 9 10:20:54 EST 2026. Brief was pasted twice; the second copy is the complete one.
+Test command: `. NGSPICE=<bundled ngspice_con.exe> python -m pytest -q -rs` (0 failures and 0 skips required).
+Baseline at start: 520 passed, 0 skipped.
+
+| Phase | State | Last commit | Tests (ngspice on) |
+|---|---|---|---|
+| 1. M8 MOSFET | done | (see git log) | 602 passed, 0 skipped (537 passed, 65 skipped without ngspice) |
+| 2. M9 adaptive stepping | not started | - | - |
+| 3. Audit | not started | - | - |
+| 4. Report | not started | - | - |

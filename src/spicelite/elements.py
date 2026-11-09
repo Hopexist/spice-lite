@@ -13,7 +13,21 @@ import math
 
 import numpy as np
 
-from .circuit import CCCS, CCVS, VCCS, VCVS, Capacitor, CurrentSource, Diode, DiodeModel, Inductor, Resistor, VoltageSource
+from .circuit import (
+    CCCS,
+    CCVS,
+    VCCS,
+    VCVS,
+    Capacitor,
+    CurrentSource,
+    Diode,
+    DiodeModel,
+    Inductor,
+    Mosfet,
+    MosModel,
+    Resistor,
+    VoltageSource,
+)
 
 # ngspice-41's constants (CODATA 2014) and default 27 C, so Vt = kT/q = 0.0258649170 V matches
 # ngspice digit for digit; GMIN is the conductance SPICE puts across every diode junction.
@@ -228,3 +242,120 @@ def stamp_ccvs(A: np.ndarray, idx: dict[str, int], row: int, sense_row: int, e: 
     """
     _stamp_voltage_output(A, idx, row, e.n_plus, e.n_minus)
     A[row, sense_row] -= e.rm
+
+
+# ---- MOSFET, level 1 (Shichman-Hodges) ----------------------------------------------------------
+# shortcut: no intrinsic capacitances (Cgs, Cgd, Cgb, Cbd, Cbs) and the bulk-drain / bulk-source junction
+# diodes are reduced to their GMIN conductance (no exponential, no leakage current, no forward
+# conduction when the bulk is biased more than ~0.6 V above a channel terminal). The device is a
+# voltage-controlled current source plus those two tiny conductances; circuits add explicit load caps.
+# Upgrade when a transient needs gate charge (the inverter's switching delay is then underestimated).
+
+
+def mos_threshold(m: MosModel, vbs: float) -> float:
+    """Threshold voltage in the NMOS frame: Vth = VTO' + GAMMA (sqrt(PHI - Vbs) - sqrt(PHI)), VTO' = type * VTO.
+    The body effect: a reverse-biased bulk (Vbs < 0) widens the depletion region and raises Vth. For
+    Vbs > 0 the square root would fail at Vbs = PHI, so, like ngspice, it is continued by sqrt(PHI)/(1 + Vbs/2PHI)."""
+    return m.sign * m.VTO + m.GAMMA * (_sarg(m, vbs)[0] - math.sqrt(m.PHI))
+
+
+def _sarg(m: MosModel, vbs: float) -> tuple[float, float]:
+    """sqrt(PHI - Vbs) and its derivative with respect to Vbs."""
+    if vbs <= 0:
+        s = math.sqrt(m.PHI - vbs)
+        return s, -0.5 / s
+    s = math.sqrt(m.PHI) / (1 + 0.5 * vbs / m.PHI)
+    return s, -0.5 * s / (m.PHI * (1 + 0.5 * vbs / m.PHI))
+
+
+def _shichman_hodges(m: MosModel, beta: float, vgs: float, vds: float, vbs: float):
+    """NMOS-frame drain current and (gm, gds, gmbs) for vds >= 0. With Vov = Vgs - Vth and
+    lam = 1 + LAMBDA Vds (channel-length modulation, applied in triode too, as ngspice does):
+        cutoff     Vov <= 0       i = 0
+        triode     Vds <  Vov     i = beta (Vov Vds - Vds^2/2) lam
+        saturation Vds >= Vov     i = beta/2 Vov^2 lam
+    gm = di/dVgs, gds = di/dVds, gmbs = di/dVbs = -gm dVth/dVbs."""
+    sarg, dsarg = _sarg(m, vbs)
+    vov = vgs - mos_threshold(m, vbs)
+    if vov <= 0:
+        return 0.0, 0.0, 0.0, 0.0
+    lam = 1 + m.LAMBDA * vds
+    if vds >= vov:
+        i, gm, gds = 0.5 * beta * vov**2 * lam, beta * vov * lam, 0.5 * beta * vov**2 * m.LAMBDA
+    else:
+        core = vov * vds - 0.5 * vds**2
+        i, gm, gds = beta * core * lam, beta * vds * lam, beta * (vov - vds) * lam + beta * core * m.LAMBDA
+    return i, gm, gds, -gm * m.GAMMA * dsarg
+
+
+def mos_eval(e: Mosfet, vgs: float, vds: float, vbs: float):
+    """Evaluate a MOSFET at ACTUAL terminal voltages vgs = Vg - Vs, vds = Vd - Vs, vbs = Vb - Vs.
+    Returns (i, gm, gds, gmbs, reverse, (vgs_e, vds_e, vbs_e)).
+
+    PMOS is an NMOS with every voltage and current negated: evaluate at type * v, multiply the current
+    by type; the derivatives gm, gds, gmbs keep their sign (two sign flips cancel).
+    If Vds (in the NMOS frame) is negative the roles of drain and source swap: the channel is
+    symmetric, so the device is evaluated with the source pin as the "drain" (reverse = True).
+    `i` then flows from the effective drain dn to the effective source sn (the pins swapped if
+    reverse), and the conductances are with respect to the effective voltages vgs_e = Vg - V(sn),
+    vds_e = V(dn) - V(sn), vbs_e = Vb - V(sn), which are returned for the companion model."""
+    t = e.model.sign
+    reverse = t * vds < 0
+    if reverse:
+        vgs, vds, vbs = vgs - vds, -vds, vbs - vds
+    i, gm, gds, gmbs = _shichman_hodges(e.model, e.model.KP * e.W / e.L, t * vgs, t * vds, t * vbs)
+    return t * i, gm, gds, gmbs, reverse, (vgs, vds, vbs)
+
+
+def mos_current(e: Mosfet, vgs: float, vds: float, vbs: float) -> float:
+    """Current into the drain pin (out of the source pin), at actual voltages."""
+    i, *_, reverse, _v = mos_eval(e, vgs, vds, vbs)
+    return -i if reverse else i
+
+
+def _stamp_mos_g(A, idx, e: Mosfet, reverse: bool, gm: float, gds: float, gmbs: float) -> None:
+    """The conductance part of the companion model, shared by Newton (DC / transient) and AC.
+    Both bulk junctions also contribute a GMIN conductance (bulk-drain, bulk-source).
+    With dn the effective drain and sn the effective source, KCL at dn has the channel current
+    gds (Vdn - Vsn) + gm (Vg - Vsn) + gmbs (Vb - Vsn) leaving it, and sn gets the negative:
+
+                     dn      g     b       sn
+              dn  [ +gds    +gm  +gmbs  -(gds+gm+gmbs) ]
+              sn  [ -gds    -gm  -gmbs  +(gds+gm+gmbs) ]
+    """
+    _stamp_admittance(A, idx, e.bulk, e.drain, GMIN)  # what is left of the junctions (as in ngspice);
+    _stamp_admittance(A, idx, e.bulk, e.source, GMIN)  # also keeps a node of only cut-off devices non-singular
+    dn, sn = (e.source, e.drain) if reverse else (e.drain, e.source)
+    cols = [(dn, gds), (e.gate, gm), (e.bulk, gmbs), (sn, -(gds + gm + gmbs))]
+    for row, sign in ((dn, 1.0), (sn, -1.0)):
+        r = idx.get(row)
+        if r is None:
+            continue
+        for node, g in cols:
+            c = idx.get(node)
+            if c is not None:
+                A[r, c] += sign * g
+
+
+def stamp_mosfet(A: np.ndarray, b: np.ndarray, idx: dict[str, int], e: Mosfet,
+                 vgs: float, vds: float, vbs: float):
+    """Newton companion model of a MOSFET linearised at actual (vgs, vds, vbs): the conductances of
+    `_stamp_mos_g` plus a current source Ieq = i - gm vgs_e - gds vds_e - gmbs vbs_e flowing dn -> sn
+    (b[dn] -= Ieq, b[sn] += Ieq). Returns (reverse, gm, gds, gmbs, Ieq) for the convergence check."""
+    i, gm, gds, gmbs, reverse, (vg, vd, vb) = mos_eval(e, vgs, vds, vbs)
+    ieq = i - gm * vg - gds * vd - gmbs * vb
+    _stamp_mos_g(A, idx, e, reverse, gm, gds, gmbs)
+    dn, sn = (e.source, e.drain) if reverse else (e.drain, e.source)
+    if (r := idx.get(dn)) is not None:
+        b[r] -= ieq
+    if (r := idx.get(sn)) is not None:
+        b[r] += ieq
+    return reverse, gm, gds, gmbs, ieq
+
+
+def stamp_mosfet_small_signal(A: np.ndarray, idx: dict[str, int], e: Mosfet,
+                              vgs: float, vds: float, vbs: float) -> None:
+    """In small-signal AC a MOSFET is its transconductances at the DC bias: the same conductance
+    stamp as Newton uses, without the constant current Ieq."""
+    _i, gm, gds, gmbs, reverse, _v = mos_eval(e, vgs, vds, vbs)
+    _stamp_mos_g(A, idx, e, reverse, gm, gds, gmbs)

@@ -15,6 +15,8 @@ from .circuit import (
                       Diode,
                       DiodeModel,
                       Inductor,
+                      Mosfet,
+                      MosModel,
                       NetlistError,
                       OpenLoopWarning,
                       Pulse,
@@ -29,5 +31,5 @@ from .parser import parse
 
 __all__ = ["CCCS", "CCVS", "OPAMP_GAIN", "VCCS", "VCVS", "AcSweep", "Capacitor", "Circuit",
            "ConvergenceError", "CurrentSource", "DcSweep", "Diode", "DiodeModel", "Inductor",
-           "NetlistError", "OpenLoopWarning", "Pulse", "Resistor", "Sin", "SingularCircuitError",
+           "MosModel", "Mosfet", "NetlistError", "OpenLoopWarning", "Pulse", "Resistor", "Sin", "SingularCircuitError",
            "TranSpec", "VoltageSource", "opamp", "parse"]

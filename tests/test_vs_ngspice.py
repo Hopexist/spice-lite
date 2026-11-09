@@ -30,7 +30,11 @@ TRAN_TOL = {"rc_step.cir": 5e-5, "rlc_ring.cir": 1e-3, "sin_rl.cir": 5e-4,
             # the same O(h^2) error as rc_step: observed 1.0e-5 of peak, tolerance 5e-5. The
             # op-amp integrator (1 V ramp over 2 ms, 10 us step): observed 4.9e-7, tolerance 2.5e-6.
             "vcvs_e.cir": 5e-5, "vccs_g.cir": 5e-5, "cccs_f.cir": 5e-5, "ccvs_h.cir": 5e-5,
-            "integrator.cir": 2.5e-6}
+            "integrator.cir": 2.5e-6,
+            # Milestone 8: CMOS inverter, 1 pF load, 0.0125 ns step. Same O(h^2) story (the gap fell
+            # 2.1e-2 -> 5.2e-3 -> 1.3e-3 -> 3.3e-4 V as h went 0.05 -> 0.00625 ns: 4x per halving).
+            # Observed worst 2.6e-4 of peak (v(out), at the switching edge); supply current 2.1e-4.
+            "cmos_inverter_tran.cir": 1.2e-3}
 # ngspice linearises a diode at ITS bias point, which with default tolerances is only good to
 # ~1e-4 (observed 1.3e-4 relative on diode_ac). Tightening the options is harmless for linear
 # circuits and brings the diode example to 6e-11, so every AC comparison uses them.
@@ -41,7 +45,7 @@ needs_ngspice = pytest.mark.skipif(
     reason="ngspice not found: put ngspice_con.exe/ngspice.exe on PATH or set NGSPICE=<path to exe>")
 
 
-LINEAR_EXAMPLES = [p for p in EXAMPLES if not parse(p.read_text()).diodes()]
+LINEAR_EXAMPLES = [p for p in EXAMPLES if not parse(p.read_text()).nonlinear()]
 
 
 @needs_ngspice

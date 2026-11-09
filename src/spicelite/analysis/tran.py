@@ -106,7 +106,7 @@ def _frozen_state_system(ex: Circuit, vc: dict[str, float], il: dict[str, float]
         VoltageSource(e.name, e.n1, e.n2, vc[e.name]) if isinstance(e, Capacitor)
         else CurrentSource(e.name, e.n1, e.n2, il[e.name]) if isinstance(e, Inductor) else e
         for e in ex.elements])
-    if held.diodes():
+    if held.nonlinear():
         r = solve_nonlinear(held, t=t)
         x, idx = r.x, r.idx
     else:
@@ -144,7 +144,7 @@ def tran(circuit: Circuit, spec: TranSpec | None = None, method: str | None = No
 
     check_topology(circuit, dc=False)  # companion models make C conduct, L finite
     ex = _expand(circuit)  # diodes with RS get a hidden internal node (no-op for linear circuits)
-    diodes = ex.diodes()
+    diodes = ex.nonlinear()  # diodes and MOSFETs: anything that needs Newton at every step
     idx = ex.node_index()
     branches = ex.branch_elements()
     n = len(idx)

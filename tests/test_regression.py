@@ -17,6 +17,7 @@ from spicelite.analysis.tran import tran
 
 HERE = Path(__file__).parent
 GOLDEN = json.loads((HERE / "golden_m1_m6.json").read_text())
+GOLDEN_M7 = json.loads((HERE / "golden_m1_m7.json").read_text())  # every example that existed at the end of M7
 
 
 def stats(x) -> list:
@@ -37,8 +38,18 @@ def check(got: dict, want: dict, what: str) -> None:
 
 @pytest.mark.parametrize("name", sorted(GOLDEN))
 def test_results_match_the_v06_golden_values(name):
+    check_example(name, GOLDEN[name])
+
+
+@pytest.mark.parametrize("name", sorted(GOLDEN_M7))
+def test_results_match_the_m7_golden_values(name):
+    """Frozen from the M7 source (commit 35ecdb5, before MOSFETs): adding M8/M9 must not move any of
+    the 26 earlier examples, including the controlled-source ones the v0.6 file predates."""
+    check_example(name, GOLDEN_M7[name])
+
+
+def check_example(name, want):
     c = parse((HERE.parent / "examples" / name).read_text())
-    want = GOLDEN[name]
     r = op(c)
     check(r.voltages, want["op"]["v"], f"{name} op voltages")
     check(r.currents, want["op"]["i"], f"{name} op currents")
@@ -62,3 +73,9 @@ def test_golden_file_covers_every_pre_m5_example():
               "rc_lowpass", "rc_step", "rl_highpass", "rlc_bandpass", "rlc_ring", "rlc_uic", "sin_rl",
               "two_source"}
     assert {n.removesuffix(".cir") for n in GOLDEN} == pre_m5
+
+
+def test_m7_golden_file_covers_every_pre_m8_example():
+    pre_m8 = {p.name for p in (HERE.parent / "examples").glob("*.cir")} - {
+        "nmos_iv.cir", "cmos_inverter_vtc.cir", "cmos_inverter_tran.cir", "nmos_common_source.cir"}
+    assert set(GOLDEN_M7) == pre_m8
