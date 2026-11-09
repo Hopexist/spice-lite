@@ -10,6 +10,27 @@ Modified Nodal Analysis (MNA), using Newton-Raphson for diodes. Results are chec
 controlled sources with op-amps, adaptive time stepping, a command line, sparse solves and a CI workflow are done (see the
 roadmap in `CLAUDE.md`).
 
+## Try it in your browser
+
+**Live demo: https://hopexist.github.io/spice-lite/** (placeholder until GitHub Pages is enabled for this repository)
+
+Paste or edit a netlist, press Run (Ctrl/Cmd+Enter), and get interactive plots and tables. spicelite runs in your browser through
+[Pyodide](https://pyodide.org) inside a Web Worker, so there is no server and nothing you type leaves the page. Every bundled
+example can overlay precomputed ngspice curves with an error panel; share links (`#n=...`) reproduce a circuit.
+
+![spice-lite web UI, dark theme](docs/web_ui_dark.png)
+
+```
+cd web
+npm ci
+npm run dev        # local dev server
+npm test           # unit tests + every example through real Pyodide
+npm run build      # static site in web/dist (works from a sub-path such as /spice-lite/)
+npm run e2e        # Playwright smoke tests against the built site (PW_CHANNEL=msedge to use an installed browser)
+```
+
+The first run downloads Python, numpy and scipy (about 11 s cold); later runs are cached. Limits and design choices are in `DECISIONS.md` (D30-D36).
+
 ## Install and quick start
 
 ```

@@ -164,3 +164,77 @@ Each entry: choice, alternatives, why.
 ## D29. Audit fixes
 - magnitude_db returns -inf for an exact zero without a numpy warning (a supply rail has no AC signal); the CLI had been printing the warning.
 - The report from the M5-M7 run was renamed REPORT_M5_M7.md; REPORT.md is the M8-M9 report.
+
+# Web UI run (branch `web-ui`)
+
+## D30. Pyodide route is GO; pinned to Pyodide 314.0.7 (Python 3.14.2, numpy 2.4.6, scipy 1.18.0)
+- spicelite declares requires-python >=3.10 with no upper cap and uses only numpy and scipy (linalg, sparse) on the web path.
+  `import spicelite` and the analyses do not import matplotlib, the subprocess-based ngspice runner, plotting or cli (checked via sys.modules), so no
+  code change was needed for the "no CLI-only imports on the web path" requirement.
+- **Install method:** the pure-Python wheel built with `pip wheel . --no-deps` is unpacked with `pyodide.unpackArchive(Uint8Array, "wheel")` after
+  `loadPackage(["numpy", "scipy"])`. Alternative: micropip (also works, costs an extra package download and resolves dependencies we do not want:
+  matplotlib is in the wheel metadata). A Node Buffer must be converted to a Uint8Array first (Pyodide rejects it).
+- **Where Pyodide is served from:** the jsdelivr CDN at the pinned version URL, not self-hosted (the wasm plus numpy plus scipy are tens of MB, and Pages
+  repo size and deploy time would balloon). The npm `pyodide` package is a dev dependency used for TypeScript types and the headless Node tests.
+  Risk: first load needs the CDN; the browser caches it afterwards.
+
+## D31. Dev tooling
+- Node 26 / npm 11 are available; Vite and Playwright are installable from npm (network works), so the frontend is Vite + TypeScript.
+
+## D32. JSON shape and guards (web_api.py)
+- Result: {ok, title, version, warnings, analyses:[{type, title, x:{name, unit, log, values}|null, signals:[{name, unit, values, part}], meta}]}.
+  AC signals are magnitude (dB) and phase (deg) pairs distinguished by `part`; non-finite numbers become null so the output is strict JSON
+  (an AC-quiet supply rail is -inf dB). .op has x = null (a table, not a curve). No analysis directive runs .op with a note, as the CLI does.
+- Guards (Limits, all overridable through options): 200,000 characters, 500 nodes (100 with diodes/MOSFETs: dense Newton), 100,000 points per analysis,
+  points x elements <= 2,000,000 (x5 for nonlinear), 30 s wall clock. Size and cost are checked BEFORE running; adaptive transients get a max_steps budget
+  derived from the same limits. **Runtime limit caveat:** one analysis cannot be interrupted from inside Python (Pyodide has no threads or signals), so
+  the time budget is checked between analyses and the worker additionally terminates itself on a hard timeout (Phase 3). Alternative: a deadline callback
+  threaded through every analysis loop; rejected as invasive for the core library.
+- CLI golden outputs (tests/golden_cli/*.txt) were generated from the CLI before any web change, so the regression test really compares against the old behaviour.
+
+## D33. Frontend stack: Vite 8 + TypeScript 7, uPlot, CodeMirror 6, IBM Plex via @fontsource, Vitest
+- **Charts: uPlot, not Plotly.js.** uPlot is ~50 kB (Plotly is ~1 MB even in its basic bundle), handles 100k points at 60 fps, and has what was asked for
+  built in: live hover readout (legend), drag zoom, double-click reset, clickable legend toggling, log x scale, and cursor/zoom sync for the Bode pair.
+  Costs: less default polish (styled in style.css) and no built-in dual axes (voltages and currents get separate plots instead, which is also clearer).
+- **Editor:** CodeMirror 6 with a small StreamLanguage SPICE grammar (title line, * comments, dot commands, element names, numbers with SI suffix incl. meg,
+  waveform words, key= parameters), an error gutter and error-line decoration. Colors are CSS variables so the theme switch needs no editor rebuild.
+- **Fonts self-hosted** (latin subsets of IBM Plex Sans/Mono via @fontsource, ~170 kB total) instead of Google Fonts: no third-party request, works offline after first load.
+- **New npm dependencies:** uplot, codemirror (state, view, language, commands), @lezer/highlight, @fontsource/ibm-plex-*, pyodide (types + Node tests); dev: vite, typescript,
+  vitest, @playwright/test, @types/node. Bundle: ~375 kB JS (129 kB gzip), 13 kB CSS.
+- **Vite `base: "./"`** so every asset URL is relative and the site works from any sub-path (GitHub Pages /spice-lite/). The worker receives an absolute wheel URL
+  built from document.baseURI because a relative fetch inside a worker would resolve against the worker file.
+
+## D34. Look and feel: engineering notebook by day, oscilloscope by night
+- Light = warm paper with graph-paper grid, ink blue lines, vermilion Run button. Dark = graphite-green with phosphor traces and an amber Run button. IBM Plex Mono for
+  anything numeric or code, Plex Sans for prose. Theme follows prefers-color-scheme with a manual Auto / Light / Dark button (stored in localStorage, applied before first paint).
+- Traces use the Okabe-Ito color-blind-safe palette (darkened on paper, brightened on dark) AND eight dash patterns, so color is never the only cue; error state uses an icon,
+  a text label and a gutter marker as well as red. The table view is the accessible alternative to every plot.
+
+## D35. Running and sharing
+- **Run coalescing:** while a run is in flight, further clicks set a single "run again" flag; the stale result is dropped and one more run starts with the latest text.
+- **Hard timeout:** the engine terminates the worker after 60 s (Python cannot be interrupted any other way) and boots a fresh one on the next run. This is the real runtime
+  limit; run_netlist only checks the budget between analyses (D32).
+- **Share links:** `#ex=<name>` for an unmodified bundled example (short), otherwise `#n=<base64url>` or `#z=<base64url of deflate-raw>` (chosen when shorter), decoded with
+  the browser CompressionStream. Editing detaches from the example name and rewrites the hash after 400 ms.
+- **Caching:** the Python runtime, numpy and scipy come from the jsdelivr CDN and are cached by the browser's HTTP cache after the first visit; no service worker (a second cache
+  to invalidate for little gain). The worker stays alive for the page lifetime, so later runs reuse the loaded interpreter.
+
+## D36. Reference overlay: precomputed, resampled onto spicelite's grid, committed to the repo
+- `scripts/gen_reference.py` runs each example through the existing ngspice runner (tightened options as in the comparison tests; tmax_fraction 1e4 for
+  stiff_adaptive) and stores ngspice's curves interpolated onto spicelite's own x grid, so the page just subtracts. If the browser's grid differs slightly (adaptive
+  stepping can choose marginally different steps under Pyodide's BLAS) the page re-interpolates linearly onto its own grid (`resample`, unit-tested).
+- **Committed, not built in CI:** ngspice is not available on the Pages build and apt's version differs from 41, which the tolerances and these curves were measured against
+  (893 kB for 33 examples). Regenerate with `npm run reference` (needs NGSPICE).
+- Drawn dashed in the ink color over the coloured traces, so agreement is visible as the colour showing through the gaps; labelled "precomputed, not a live run" in the
+  toggle tooltip and the error panel. The panel lists the largest difference per plot (dB / degrees for AC, volts / amps and fraction of peak otherwise) and, for `.op`,
+  adds ngspice and difference columns to the table. The toggle exists only while the editor still equals the bundled example text.
+
+## D37: Frontend test strategy, deploy, and CI (Phase 5)
+- **Tests:** vitest for pure logic (hash round trip, formatting/CSV, reference resampling, palette contrast) plus one test that boots real Pyodide in Node, installs the freshly built wheel and runs all 33 examples against the committed ngspice reference (tolerances in the file, with reasons). Playwright for end-to-end: it drives the built site via `vite preview`, and a second spec serves `dist/` under `/spice-lite/` with a tiny Node server to prove sub-path hosting (`base: "./"`).
+- **Alternatives:** jsdom component tests (would not exercise the worker, uPlot canvas or Pyodide); a Playwright-downloaded browser locally (needs a download; the machine has Edge, so `PW_CHANNEL=msedge`, and CI installs Chromium).
+- **Pages:** `pages.yml` builds wheel + site on push to main and deploys with the official upload-pages-artifact / deploy-pages actions. Needs the repository setting Pages > Source = GitHub Actions (a manual step for the owner).
+- **CI:** a separate `web` job (typecheck, `npm test`, build, e2e) so the Python matrix is untouched. Its first run has not happened (nothing is pushed); the Pyodide test and e2e need network access to the jsdelivr CDN.
+- **Screenshots** in `docs/web_ui_*.png` are captured headlessly with `web/scripts/shoot.mjs`; no GIF.
+
+## D38: Report naming
+The M8-M9 report moves to `REPORT_M8_M9.md` (as the M5-M7 one did earlier) and `REPORT.md` is now the web UI report. Alternative: `REPORT_WEB.md`; rejected to keep "REPORT.md = latest run".

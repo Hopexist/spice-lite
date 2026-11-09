@@ -1,0 +1,23 @@
+import { chromium } from "@playwright/test";
+const url = process.argv[2], out = process.argv[3];
+const browser = await chromium.launch({ channel: "msedge" });
+const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "light" });
+const page = await ctx.newPage();
+const errors = [];
+page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+page.on("pageerror", (e) => errors.push("pageerror " + e.message));
+await page.goto(url + "#ex=rlc_bandpass");
+await page.waitForSelector(".tab", { timeout: 120000 });
+await page.waitForSelector("input[type=checkbox]");
+await page.check("input[type=checkbox]");
+await page.waitForTimeout(500);
+await page.screenshot({ path: `${out}/s-overlay.png` });
+console.log("note:", await page.locator(".note").first().textContent());
+// editing the netlist must hide the toggle
+await page.click(".cm-content");
+await page.keyboard.press("End");
+await page.keyboard.type(" ");
+await page.waitForTimeout(300);
+console.log("toggle after edit:", await page.locator("input[type=checkbox]").count());
+console.log(errors.length ? errors.join("\n") : "no console errors");
+await browser.close();

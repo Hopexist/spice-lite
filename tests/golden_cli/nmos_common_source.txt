@@ -1,0 +1,23 @@
+
+== .op operating point ==
+signal         value
+v(vdd)             5
+ v(in)           1.5
+v(out)       4.32099
+i(vdd)  -0.000135802
+i(vin)             0
+
+== .ac frequency sweep ==
+       freq  mag_db(v(vdd))  phase_deg(v(vdd))  mag_db(v(in))  phase_deg(v(in))  mag_db(v(out))  phase_deg(v(out))  mag_db(i(vdd))  phase_deg(i(vdd))  mag_db(i(vin))  phase_deg(i(vin))
+       1000            -inf                  0              0                 0         8.57085            179.982        -65.4085            179.982            -inf                  0
+    1258.93            -inf                  0              0                 0         8.57085            179.978        -65.4085            179.978            -inf                  0
+    1584.89            -inf                  0              0                 0         8.57085            179.972        -65.4085            179.972            -inf                  0
+    1995.26            -inf                  0              0                 0         8.57085            179.965        -65.4085            179.965            -inf                  0
+    2511.89            -inf                  0              0                 0         8.57085            179.955        -65.4086            179.955            -inf                  0
+        ...             ...                ...            ...               ...             ...                ...             ...                ...             ...                ...
+3.98107e+08            -inf                  0              0                 0        -33.2645            90.4638        -107.244            90.4638            -inf                  0
+5.01187e+08            -inf                  0              0                 0        -35.2644            90.3684        -109.244            90.3684            -inf                  0
+6.30957e+08            -inf                  0              0                 0        -37.2644            90.2927        -111.244            90.2927            -inf                  0
+7.94328e+08            -inf                  0              0                 0        -39.2643            90.2325        -113.244            90.2325            -inf                  0
+      1e+09            -inf                  0              0                 0        -41.2643            90.1847        -115.244            90.1847            -inf                  0
+(61 rows; use --csv DIR to save all of them)
