@@ -37,12 +37,16 @@ def bode(freqs: np.ndarray, mine: np.ndarray, path: str | Path, title: str = "",
 
 
 def waveform(t: np.ndarray, mine: np.ndarray, path: str | Path, title: str = "",
-             ref_t: np.ndarray | None = None, ref: np.ndarray | None = None) -> None:
+             ref_t: np.ndarray | None = None, ref: np.ndarray | None = None,
+             context: np.ndarray | None = None, context_label: str = "input") -> None:
     """Waveform over its error curve. `ref` (ngspice, its own time points) is drawn dashed
-    and the error is spicelite minus ngspice interpolated onto spicelite's time grid."""
+    and the error is spicelite minus ngspice interpolated onto spicelite's time grid.
+    `context` is an optional faint curve (usually the source) drawn behind for orientation."""
     unit, scale = ("ms", 1e3) if t[-1] >= 1e-3 else ("us", 1e6)
     fig, (ax, ax_e) = plt.subplots(2, 1, sharex=True, figsize=(7, 6),
                                    gridspec_kw={"height_ratios": [3, 1]})
+    if context is not None:
+        ax.plot(t * scale, context, color="0.7", lw=1.2, label=context_label)
     ax.plot(t * scale, mine, lw=2.5, label="spicelite (trapezoidal)")
     if ref is not None:
         ax.plot(ref_t * scale, ref, "k--", lw=1.2, label="ngspice")
@@ -89,6 +93,36 @@ def sweep_plot(x: np.ndarray, mine: np.ndarray, path: str | Path, title: str = "
     plt.close(fig)
 
 
+def diode_ringing_demo(path: str | Path) -> None:
+    """Half-wave rectifier into a FAST RC (tau = 10 us) with a 50 us step: when the diode turns
+    off the output decays much faster than the step. Trapezoidal undershoots below 0 V and rings
+    (the diode would never let it), backward Euler decays monotonically. The reference is the
+    same circuit at 0.5 us."""
+    net = ("diode ringing\nV1 in 0 DC 0 SIN(0 5 1k)\nD1 in out dm\nC1 out 0 1n\nR1 out 0 10k\n"
+           ".model dm D(IS=1e-14 N=1 RS=1)\n.tran {h} 2m\n.end")
+    fine = tran(parse(net.format(h="0.5u")))
+    trap, be = tran(parse(net.format(h="50u")), method="trap"), tran(parse(net.format(h="50u")), method="be")
+    fig, (ax_all, ax_zoom) = plt.subplots(2, 1, figsize=(7, 7))
+    for ax, (lo, hi) in ((ax_all, (0, 2e-3)), (ax_zoom, (0.45e-3, 0.8e-3))):
+        ax.plot(fine.time * 1e3, fine.voltages["out"], color="0.55", lw=2, label="reference (h = 0.5 us)")
+        for r, c, m, lab in ((trap, "tab:red", "o", "trapezoidal (rings below 0 V)"),
+                             (be, "tab:blue", "s", "backward Euler (damped)")):
+            keep = (r.time >= lo) & (r.time <= hi)
+            ax.plot(r.time[keep] * 1e3, r.voltages["out"][keep], m + "-", color=c, ms=4, label=lab)
+        ax.axhline(0, color="k", lw=0.6)
+        ax.set_xlim(lo * 1e3, hi * 1e3)
+        ax.set_ylabel("v(out) (V)")
+        ax.grid(True, alpha=0.3)
+    ax_zoom.set_ylim(-0.08, 1.0)  # otherwise the axis spans the whole waveform and the 50 mV undershoot vanishes
+    ax_all.set_title("Diode turning off into a fast RC (tau = 10 us), step h = 50 us")
+    ax_all.legend(fontsize=8)
+    ax_zoom.set_xlabel("Time (ms)")
+    ax_zoom.set_title("zoom on the turn-off", fontsize=9)
+    fig.tight_layout()
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+
+
 def ringing_demo(path: str | Path) -> None:
     """A 0 -> 1 V -> 0 pulse into an RC with the time step 20x the time constant.
     Trapezoidal rings around the true (monotonic) answer; backward Euler just damps."""
@@ -121,23 +155,31 @@ def main(examples_dir: str = "examples", out_dir: str = "docs") -> None:
     Path(out_dir).mkdir(exist_ok=True)
     have_ngspice = find_ngspice() is not None
     note = "" if have_ngspice else " (spicelite only: ngspice not found)"
-    for name in ("rc_lowpass", "rl_highpass", "rlc_bandpass"):
+    # ngspice linearises diodes at its own bias point, so tighten it (harmless for linear circuits)
+    tight = "reltol=1e-9 abstol=1e-15 vntol=1e-12"
+    for name, node in (("rc_lowpass", "out"), ("rl_highpass", "out"), ("rlc_bandpass", "out"), ("diode_ac", "a")):
         path = Path(examples_dir) / f"{name}.cir"
         mine = ac(parse_file(str(path)))
         # Each example has a 1 V AC source, so the node voltage is the transfer function.
-        ref = run_ac(path.read_text()) if have_ngspice else None
-        bode(mine.freqs, mine.voltages["out"], Path(out_dir) / f"bode_{name}.png", name,
-             ref.freqs if ref else None, ref.voltages["out"] if ref else None)
+        ref = run_ac(path.read_text(), tight) if have_ngspice else None
+        bode(mine.freqs, mine.voltages[node], Path(out_dir) / f"bode_{name}.png", name,
+             ref.freqs if ref else None, ref.voltages[node] if ref else None)
         print(f"wrote {out_dir}/bode_{name}.png{note}")
-    for name in ("rc_step", "rlc_ring", "sin_rl"):
+    # (example, plotted node, faint context node or None)
+    for name, node, ctx in (("rc_step", "out", None), ("rlc_ring", "out", None), ("sin_rl", "out", None),
+                            ("diode_rectifier_tran", "out", "in"), ("diode_clamp_tran", "out", "in"),
+                            ("rc_discharge_uic", "out", None), ("rlc_uic", "a", None)):
         path = Path(examples_dir) / f"{name}.cir"
         mine = tran(parse_file(str(path)))
         ref = run_tran(path.read_text()) if have_ngspice else None
-        waveform(mine.time, mine.voltages["out"], Path(out_dir) / f"wave_{name}.png", name,
-                 ref.time if ref else None, ref.voltages["out"] if ref else None)
+        waveform(mine.time, mine.voltages[node], Path(out_dir) / f"wave_{name}.png", name,
+                 ref.time if ref else None, ref.voltages[node] if ref else None,
+                 mine.voltages[ctx] if ctx else None, f"v({ctx})")
         print(f"wrote {out_dir}/wave_{name}.png{note}")
     ringing_demo(Path(out_dir) / "trap_ringing.png")
     print(f"wrote {out_dir}/trap_ringing.png")
+    diode_ringing_demo(Path(out_dir) / "diode_ringing.png")
+    print(f"wrote {out_dir}/diode_ringing.png")
     # (example, plotted signal, sign, output file, title, y label, log scale)
     for name, sig, sign, png, title, ylabel, logy in (
             ("diode_rectifier_dc", "out", 1, "transfer_rectifier", "Diode rectifier transfer curve", "v(out) (V)", False),

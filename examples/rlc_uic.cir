@@ -1,0 +1,7 @@
+Series RLC ring-down from a charged 1 uF capacitor: alpha = R/2L = 5000 /s, wd = 31225 rad/s
+C1 a 0 1u
+L1 a b 1m
+R1 b 0 10
+.ic v(a)=1
+.tran 1u 1m uic
+.end

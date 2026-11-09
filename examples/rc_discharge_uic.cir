@@ -1,0 +1,6 @@
+RC discharge from an initial condition: v(out) = 5 exp(-t/RC), tau = 1 ms (starts at 5 V via .ic, no DC solve)
+R1 out 0 1k
+C1 out 0 1u
+.ic v(out)=5
+.tran 10u 5m uic
+.end

@@ -57,13 +57,14 @@ def pnjlim(vnew: float, vold: float, vt: float, vcrit: float) -> tuple[float, bo
 
 def _expand(circuit: Circuit) -> Circuit:
     """Give each diode with series resistance RS > 0 a hidden internal node: the resistor
-    runs anode -> "<name>#int" and the junction itself runs "<name>#int" -> cathode."""
+    runs anode -> "<name>#int" and the junction itself runs "<name>#int" -> cathode.
+    Idempotent: the junction diode is left with RS = 0, so expanding twice changes nothing."""
     out = []
     for e in circuit.elements:
         if isinstance(e, Diode) and e.model.RS > 0:
             mid = f"{e.name}#int"
             out += [Resistor(f"{e.name}#rs", e.anode, mid, e.model.RS),
-                    Diode(e.name, mid, e.cathode, e.model_name, e.model)]
+                    Diode(e.name, mid, e.cathode, e.model_name, replace(e.model, RS=0.0))]  # RS now lives in the resistor
         else:
             out.append(e)
     return replace(circuit, elements=out)

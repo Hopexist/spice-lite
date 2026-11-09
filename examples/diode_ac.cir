@@ -1,0 +1,8 @@
+Diode biased by 5 V through 1k, small-signal AC: rd = N Vt / Id ~ 6 ohm in parallel with 100 nF
+V1 in 0 DC 5 AC 1
+R1 in a 1k
+D1 a 0 dm
+C1 a 0 100n
+.model dm D(IS=1e-14 N=1)
+.ac dec 20 10 10meg
+.end

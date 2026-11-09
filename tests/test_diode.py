@@ -6,10 +6,8 @@ import pytest
 from scipy.special import lambertw
 
 from spicelite import DcSweep, Diode, DiodeModel, NetlistError, parse
-from spicelite.analysis.ac import ac
 from spicelite.analysis.dc import dc_sweep, op
 from spicelite.analysis.newton import pnjlim, solve_nonlinear
-from spicelite.analysis.tran import tran
 from spicelite.circuit import ConvergenceError, Resistor
 from spicelite.elements import GMIN, VT, diode_iv, stamp_diode
 
@@ -306,13 +304,12 @@ def test_dc_sweep_without_directive():
         dc_sweep(parse("t\nV1 a 0 1\nR1 a 0 1\n.end"))
 
 
-# ---- diodes are DC-only for now ----
-def test_diodes_rejected_in_ac_and_tran_with_a_clear_message():
-    body = "V1 in 0 AC 1\nR1 in a 1k\nD1 a 0 dm"
-    with pytest.raises(NotImplementedError, match="d1.*only supported in .op/.dc"):
-        ac(parse(net(body, tail=".ac dec 5 1 1k")))
-    with pytest.raises(NotImplementedError, match="diodes are not supported in .tran"):
-        tran(parse(net(body, tail=".tran 1u 10u")))
+# ---- the raw MNA builder never silently ignores a diode ----
+def test_mna_build_refuses_diodes_without_the_newton_or_small_signal_path():
+    from spicelite.mna import build
+
+    with pytest.raises(NotImplementedError, match="d1.*Newton solver or the small-signal path"):
+        build(parse(net("V1 in 0 1\nR1 in a 1k\nD1 a 0 dm")))
 
 
 def test_diode_is_a_dc_path_but_a_source_loop_is_still_singular():

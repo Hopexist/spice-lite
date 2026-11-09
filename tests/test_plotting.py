@@ -47,3 +47,13 @@ def test_sweep_plot_linear_and_log_with_zeros(tmp_path):
     sweep_plot(x, x, tmp_path / "noref.png")
     for n in ("log", "lin", "noref"):
         assert (tmp_path / f"{n}.png").read_bytes()[:4] == b"\x89PNG"
+
+
+def test_diode_ringing_demo_and_waveform_context(tmp_path):
+    from spicelite.plotting import diode_ringing_demo, waveform
+
+    diode_ringing_demo(tmp_path / "d.png")
+    t = np.linspace(0, 1e-3, 40)
+    waveform(t, np.sin(t * 1e4), tmp_path / "w.png", "x", t, np.sin(t * 1e4), np.cos(t * 1e4), "v(in)")
+    for n in ("d", "w"):
+        assert (tmp_path / f"{n}.png").read_bytes()[:4] == b"\x89PNG"

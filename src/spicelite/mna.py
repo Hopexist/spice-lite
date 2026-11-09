@@ -37,8 +37,8 @@ def build(circuit: Circuit, omega: float | None = None, t: float | None = None,
             stamp_current_source(b, idx, e, e.ac if ac else e.at(t))
         elif isinstance(e, Diode) and not nonlinear_ok:
             raise NotImplementedError(
-                f"{e.name}: diodes are only supported in .op/.dc (Newton solver); "
-                "nonlinear .ac and .tran come in a later milestone")
+                f"{e.name}: diodes need the Newton solver or the small-signal path; "
+                "use analysis.dc / analysis.ac / analysis.tran instead of mna.build directly")
     return A, b
 
 

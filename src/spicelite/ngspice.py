@@ -69,9 +69,11 @@ def run_op(netlist_text: str) -> OpResult:
     return OpResult(dict(zip(nodes, values)), dict(zip(branches, values[len(nodes):])))
 
 
-def run_ac(netlist_text: str) -> AcResult:
+def run_ac(netlist_text: str, options: str = "") -> AcResult:
     """ngspice `.ac` using the netlist's own sweep. For complex vectors wrdata writes
-    (frequency, real, imag) per vector, so we rebuild complex values from the columns."""
+    (frequency, real, imag) per vector, so we rebuild complex values from the columns.
+    With diodes ngspice linearises at its own DC solution, so tighten `options` (body of a
+    `.options` line) to make that bias point as accurate as spicelite's."""
     circuit = parse(netlist_text)
     if circuit.ac is None:
         raise ValueError("netlist has no .ac directive")
@@ -79,7 +81,7 @@ def run_ac(netlist_text: str) -> AcResult:
     nodes, branches, vectors = _vectors(circuit)
     rows = np.array(_run(netlist_text,
                          f"ac {s.kind} {s.points} {s.fstart!r} {s.fstop!r}\n"
-                         "wrdata {out} " + " ".join(vectors)))
+                         "wrdata {out} " + " ".join(vectors), options))
     z = rows[:, 1::3] + 1j * rows[:, 2::3]
     return AcResult(rows[:, 0], {n: z[:, i] for i, n in enumerate(nodes)},
                     {b: z[:, len(nodes) + i] for i, b in enumerate(branches)})
@@ -102,7 +104,8 @@ def run_tran(netlist_text: str, reltol: float = 1e-6, abstol: float = 1e-14,
     nodes, branches, vectors = _vectors(circuit)
     tmax = circuit.tran.tstep * tmax_fraction
     rows = np.array(_run(netlist_text,
-                         f"tran {tmax!r} {circuit.tran.tstop!r} 0 {tmax!r}\n"
+                         f"tran {tmax!r} {circuit.tran.tstop!r} 0 {tmax!r}"
+                         f"{' uic' if circuit.tran.uic else ''}\n"
                          "wrdata {out} " + " ".join(vectors),
                          f"method=trap reltol={reltol!r} abstol={abstol!r} vntol={vntol!r}"))
     t, first = np.unique(rows[:, 0], return_index=True)  # drop duplicate time points at breakpoints

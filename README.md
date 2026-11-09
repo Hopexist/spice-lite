@@ -4,8 +4,8 @@ A small SPICE-style circuit simulator in Python. It parses a subset of the SPICE
 format and solves DC operating point, DC sweep, AC small-signal and transient analyses with
 Modified Nodal Analysis (MNA), using Newton-Raphson for diodes. Results are checked against ngspice.
 
-**Status:** Milestones 1-5 done (parser, DC, AC, transient, diodes with Newton-Raphson). Nonlinear
-transient, controlled sources and a CLI are next (see the roadmap in `CLAUDE.md`).
+**Status:** Milestones 1-6 done (parser, DC, AC, transient, diodes with Newton-Raphson in DC, AC and
+transient, `.ic`/UIC). Controlled sources and a CLI are next (see the roadmap in `CLAUDE.md`).
 
 ## Install and quick start
 
@@ -31,6 +31,9 @@ print(t.time[-1], t.voltages["out"][-1])
 
 s = dc_sweep(parse(open("examples/diode_clamp.cir").read()))            # .dc V1 -5 5 0.1, Newton per point
 print(s.voltages["out"][[0, 50, -1]], s.iterations.max())
+
+d = tran(parse(open("examples/diode_rectifier_tran.cir").read()))       # Newton at every time step
+print(d.voltages["out"].max(), d.iterations.max(), d.cuts)              # peak, worst Newton iterations, step halvings
 ```
 
 The ngspice comparison tests skip (with a message) unless ngspice is found: put
@@ -43,19 +46,22 @@ the executable.
 |---|---|
 | Elements | `R`, `C`, `L`, `D` (diode), `V` and `I` (DC, `AC mag [phase_deg]`, `PULSE(...)`, `SIN(...)`) |
 | Models | `.model name D(IS=.. N=.. RS=..)` (only the diode so far) |
-| Directives | `.op`, `.dc source start stop step`, `.ac dec\|oct\|lin`, `.tran tstep tstop`, `.options method=trap\|be`, `.end` |
+| Directives | `.op`, `.dc source start stop step`, `.ac dec\|oct\|lin`, `.tran tstep tstop [uic]`, `.ic v(node)=value`, `.options method=trap\|be`, `.end` |
 | Values | SI suffixes `f p n u m k meg g t`, case-insensitive (`m` = milli, `meg` = mega) |
-| Linear DC | direct solve, unchanged by the nonlinear work |
-| Nonlinear DC (`.op`, `.dc`) | Newton-Raphson with junction voltage limiting and a gmin-stepping fallback |
+| Linear circuits | one direct solve (DC), one solve per frequency (AC), LU factored once (transient) |
+| Diodes | Newton-Raphson with junction voltage limiting and a gmin-stepping fallback in `.op`/`.dc`; Newton at every step in `.tran` (with step halving); linearised at the bias point in `.ac` |
 | Transient methods | trapezoidal (default, 2nd order) and backward Euler (1st order, damped), fixed step |
+| Initial state | DC solution, or with `uic` the `.ic` capacitor voltages and zero inductor currents |
 
 Anything else raises a `NetlistError` with the line number. Known limitations:
 
-* Diodes work in `.op` and `.dc` only; `.ac` and `.tran` with a diode raise a clear
-  `NotImplementedError` (nonlinear transient is the next milestone).
-* `PULSE` needs all seven values; no `.ic`/UIC or controlled sources yet, so a transient needs a DC
-  path to ground for its initial state (a circuit of only capacitors is rejected); the time step is fixed.
-* Diode model: no breakdown, junction capacitance, transit time or temperature scaling.
+* `PULSE` needs all seven values; no controlled sources yet; the time step is fixed (a failing diode
+  step is halved internally, but output stays on the fixed grid).
+* `.ic` only sets capacitor voltages (a node with no capacitor on it is rejected) and is only used
+  with `uic`; without `uic` an `.ic` line is an error rather than being silently ignored.
+* A loop made only of voltage sources and capacitors (or inductors and current sources only) has no
+  t = 0+ capacitor current / inductor voltage; those histories then start at zero (a `shortcut:` note in `tran.py`).
+* Diode model: no breakdown, junction capacitance (`CJO`), transit time (`TT`) or temperature scaling.
 
 ## Diodes and Newton-Raphson
 
@@ -86,7 +92,8 @@ resistor, which is not shown in the results.
    *source stepping* (ramping all sources 0 -> 100 %) because the usual diode trouble is nodes that are
    barely defined when junctions are cut off, which gmin fixes directly, and it is ngspice's own first
    fallback. Source stepping is a documented, unimplemented alternative.
-4. *Warm starts*: a `.dc` sweep starts each point from the previous point's solution.
+4. *Warm starts*: a `.dc` sweep starts each point from the previous point's solution, and a transient
+   step starts from the previous time point.
 
 A `ConvergenceError` reports the iteration count and the unknown that was still moving the most.
 No ordinary diode circuit I tried (series chains of up to 80 diodes at 1000 V, back-to-back diodes
@@ -114,6 +121,49 @@ below 1e-9.
 |---|---|
 | ![](docs/transfer_rectifier.png) | ![](docs/transfer_clamp.png) |
 
+## Diodes in transient and AC analysis
+
+**Transient.** The linear part of the circuit (resistors, the capacitor and inductor companion models,
+source rows) is stamped once per step size; each time step then runs the same Newton loop as `.op`,
+starting from the previous time point. Typical cost is 2-4 iterations per step (the worst step in each
+example is 6-7). If a step fails to converge it is split into two half steps, recursively, up to 8
+times (down to 1/256 of the nominal step) while the output stays on the fixed grid; a failure
+after that raises `ConvergenceError` with the time and the unknown still moving. The result reports
+`iterations` per step and the total `cuts`.
+
+**AC.** The DC operating point is found with Newton, then each diode is replaced by its small-signal
+conductance `g = di/dv` at that bias (`rd = N Vt / Id`), and the usual complex sweep runs. It matches the
+analytic divider-with-`rd` response to 1e-9 and ngspice to 6e-11 relative (ngspice linearises at its own
+bias point, which is only good to ~1e-4 with its default tolerances, so the comparison tightens it).
+
+| Half-wave rectifier, 10 uF filter | Two-diode clamp, sine in |
+|---|---|
+| ![](docs/wave_diode_rectifier_tran.png) | ![](docs/wave_diode_clamp_tran.png) |
+
+![](docs/bode_diode_ac.png)
+
+**Trapezoidal ringing at a diode turn-off.** Trapezoidal is not damped. When a diode switches off into a
+circuit whose time constant is much shorter than the step, the output undershoots and rings around the
+true answer (here below 0 V, which a diode would never allow); backward Euler decays monotonically.
+
+![](docs/diode_ringing.png)
+
+## Initial conditions: `.ic` and `uic`
+
+`.tran tstep tstop uic` skips the DC solve and starts from `.ic v(node)=value` capacitor voltages
+(unlisted nodes are 0) and zero inductor currents, as in SPICE.
+
+Trapezoidal integration also needs each capacitor's current and each inductor's voltage at t = 0+, not
+just the state variables. They are found by solving the circuit at t = 0+ with every capacitor held at
+its voltage (as a voltage source) and every inductor at its current (as a current source). This also
+fixes a flaw in the first transient version: with a zero-rise step at t = 0, trapezoidal averaged the
+capacitor current *before* the step (0) with the one after, which cut it to first order. It now
+converges at second order for ideal steps too (error ratio 4.00 per halving of the step).
+
+| RC discharge from `.ic v(out)=5` | RLC ring-down from `.ic v(a)=1` |
+|---|---|
+| ![](docs/wave_rc_discharge_uic.png) | ![](docs/wave_rlc_uic.png) |
+
 ## Results vs ngspice (linear analyses)
 
 ### AC (Bode, complex values agree with ngspice to better than 1e-12 relative)
@@ -134,10 +184,10 @@ The gap to ngspice is spicelite's own O(h^2) trapezoidal error: halving the step
 
 When the step is much larger than the circuit's time constant, trapezoidal is not damped and
 rings around the true answer after a sudden input change; backward Euler stays monotonic (at the
-cost of being only first-order accurate).
+cost of being only first-order accurate). The overshoot is large because the input steps at t = 0
+and the step is 20 time constants.
 
 ![](docs/trap_ringing.png)
 
 Convergence on an RC step response (halving h): backward Euler's error falls ~2x per halving,
-trapezoidal's ~4x. With an ideal zero-rise step, trapezoidal drops to first order, because the
-capacitor current jumps at t = 0 and the trapezoid rule averages it with its pre-step value.
+trapezoidal's ~4x, for ramped steps and, since the t = 0+ initialisation, for ideal steps as well.

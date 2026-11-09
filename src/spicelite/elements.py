@@ -143,3 +143,14 @@ def stamp_diode(A: np.ndarray, b: np.ndarray, idx: dict[str, int], d: Diode,
     if q is not None:
         b[q] += ieq
     return g, ieq
+
+
+def stamp_diode_small_signal(A: np.ndarray, idx: dict[str, int], d: Diode, g: float) -> None:
+    """A diode in small-signal AC is just its conductance g = di/dv at the DC operating point:
+    the constant part of the current (Ieq) is a DC quantity and vanishes for the AC deviation.
+
+                  anode  cathode
+          anode  [  +g     -g  ]
+          cathode[  -g     +g  ]
+    """
+    _stamp_admittance(A, idx, d.anode, d.cathode, g)

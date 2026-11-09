@@ -99,10 +99,10 @@ def _parse_wave(kind: str, arg_text: str, num: int) -> Pulse | Sin:
 
 
 def _parse_tran(tokens: list[str], num: int) -> TranSpec:
-    if len(tokens) != 3:
-        raise NetlistError(".tran needs: .tran <tstep> <tstop>", num)
+    if len(tokens) not in (3, 4) or (len(tokens) == 4 and tokens[3] != "uic"):
+        raise NetlistError(".tran needs: .tran <tstep> <tstop> [uic]", num)
     try:
-        return TranSpec(parse_value(tokens[1], num), parse_value(tokens[2], num))
+        return TranSpec(parse_value(tokens[1], num), parse_value(tokens[2], num), len(tokens) == 4)
     except ValueError as err:
         raise NetlistError(str(err), num) from None
 
@@ -139,6 +139,25 @@ def _parse_dc(tokens: list[str], num: int) -> DcSweep:
         raise NetlistError(str(err), num) from None
 
 
+def _parse_ic(low: str, num: int) -> dict[str, float]:
+    """`.ic v(node)=value ...` (the caller lowercases the line)."""
+    items = re.sub(r"\s*=\s*", "=", low[len(".ic"):]).split()
+    if not items:
+        raise NetlistError(".ic needs: .ic v(<node>)=<volts> ...", num)
+    out: dict[str, float] = {}
+    for item in items:
+        m = re.fullmatch(r"v\(([^)\s]+)\)=(.+)", item)
+        if not m:
+            raise NetlistError(f"bad .ic item {item!r}; expected v(<node>)=<volts>", num)
+        node = m.group(1)
+        if node == "0":
+            raise NetlistError("ground (node 0) is fixed at 0 V and cannot have an initial condition", num)
+        if node in out:
+            raise NetlistError(f"duplicate .ic for node {node!r}", num)
+        out[node] = parse_value(m.group(2), num)
+    return out
+
+
 def parse(text: str) -> Circuit:
     # The title is always line 1, even if it looks like a comment or element.
     lines = text.splitlines()
@@ -146,7 +165,7 @@ def parse(text: str) -> Circuit:
     body = "\n".join(["", *lines[1:]])  # blank first line keeps numbering aligned
     seen: set[str] = set()
     diode_lines: dict[str, int] = {}  # for errors that can only be found once all lines are read
-    dc_line = 0
+    dc_line = ic_line = 0
 
     for num, line in _logical_lines(body):
         low, wave = line.lower(), None
@@ -163,6 +182,13 @@ def parse(text: str) -> Circuit:
                 if model.name in circuit.models:
                     raise NetlistError(f"duplicate model name {model.name!r}", num)
                 circuit.models[model.name] = model
+                continue
+            if name == ".ic":
+                for node, v in _parse_ic(low, num).items():
+                    if node in circuit.ic:
+                        raise NetlistError(f"duplicate .ic for node {node!r}", num)
+                    circuit.ic[node] = v
+                ic_line = num
                 continue
             if name == ".dc":
                 if circuit.dc is not None:
@@ -225,6 +251,13 @@ def parse(text: str) -> Circuit:
         src = next((e for e in circuit.elements if e.name == circuit.dc.source), None)
         if not isinstance(src, (VoltageSource, CurrentSource)):
             raise NetlistError(f".dc source {circuit.dc.source!r} is not a V or I source in this netlist", dc_line)
+    if circuit.ic:
+        nodes = circuit.node_index()
+        for node in circuit.ic:
+            if node not in nodes:
+                raise NetlistError(f".ic refers to node {node!r}, which is not in the circuit", ic_line)
+        if circuit.tran is not None and not circuit.tran.uic:
+            raise NetlistError(".ic is only used with `uic` on the .tran line (.tran <tstep> <tstop> uic)", ic_line)
     return circuit  # shortcut: .end is optional here, require it if strictness matters
 
 

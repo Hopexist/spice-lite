@@ -1,0 +1,8 @@
+Two-diode clamp driven by a 5 V, 1 kHz sine: the output is held near +/-0.7 V
+V1 in 0 DC 0 SIN(0 5 1k)
+R1 in out 1k
+D1 out 0 dm
+D2 0 out dm
+.model dm D(IS=1e-14 N=1)
+.tran 5u 3m
+.end

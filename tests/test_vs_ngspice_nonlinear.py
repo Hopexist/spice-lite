@@ -9,7 +9,7 @@ from spicelite.analysis.dc import dc_sweep, op
 from spicelite.ngspice import find_ngspice, run_dc, run_op
 
 EXAMPLES = sorted((Path(__file__).parent.parent / "examples").glob("*.cir"))
-DIODE_EXAMPLES = [p for p in EXAMPLES if parse(p.read_text()).diodes()]
+DIODE_EXAMPLES = [p for p in EXAMPLES if (c := parse(p.read_text())).diodes() and (c.op or c.dc)]  # the DC examples
 
 needs_ngspice = pytest.mark.skipif(
     find_ngspice() is None,

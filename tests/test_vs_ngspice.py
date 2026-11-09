@@ -19,7 +19,17 @@ TRAN_EXAMPLES = [p for p in EXAMPLES if parse(p.read_text()).tran is not None]
 # shrinks the gap 1.9e-4 -> 4.6e-5 -> 1.0e-5, i.e. 4x per halving). Observed worst case over
 # all nodes/currents is 1.1e-5 (rc_step), 2.4e-4 (rlc_ring: ~200 steps per ring period, phase
 # error accumulates over ~5 periods) and 1.2e-4 (sin_rl); each tolerance is ~4-5x that.
-TRAN_TOL = {"rc_step.cir": 5e-5, "rlc_ring.cir": 1e-3, "sin_rl.cir": 5e-4}
+TRAN_TOL = {"rc_step.cir": 5e-5, "rlc_ring.cir": 1e-3, "sin_rl.cir": 5e-4,
+            # Milestone 6. Same story (spicelite's O(h^2) error; halving h cut the rectifier gap
+            # 3.2e-3 -> 7.5e-4 -> 1.9e-4 -> 4.6e-5 V against a tighter ngspice). Observed worst:
+            # rectifier 1.2e-3 (its source current is a train of narrow diode-turn-on pulses, so
+            # timing error shows most there), clamp 1.1e-4, UIC RC discharge 1.0e-5, UIC RLC 2.4e-4.
+            "diode_rectifier_tran.cir": 5e-3, "diode_clamp_tran.cir": 5e-4,
+            "rc_discharge_uic.cir": 5e-5, "rlc_uic.cir": 1e-3}
+# ngspice linearises a diode at ITS bias point, which with default tolerances is only good to
+# ~1e-4 (observed 1.3e-4 relative on diode_ac). Tightening the options is harmless for linear
+# circuits and brings the diode example to 6e-11, so every AC comparison uses them.
+AC_OPTIONS = "reltol=1e-9 abstol=1e-15 vntol=1e-12"
 
 needs_ngspice = pytest.mark.skipif(
     find_ngspice() is None,
@@ -48,7 +58,7 @@ def test_op_matches_ngspice(path):
 @pytest.mark.parametrize("path", AC_EXAMPLES, ids=lambda p: p.name)
 def test_ac_matches_ngspice(path):
     text = path.read_text()
-    mine, ref = ac(parse(text)), run_ac(text)
+    mine, ref = ac(parse(text)), run_ac(text, AC_OPTIONS)
     # Same frequency grid (ngspice multiplies by a step, so it differs by ~1e-15).
     assert np.allclose(mine.freqs, ref.freqs, rtol=1e-9)
     # 1e-6 relative on the COMPLEX values: comparing phase angles would trip on +-180 wrap.

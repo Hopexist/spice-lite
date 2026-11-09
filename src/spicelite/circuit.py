@@ -163,10 +163,12 @@ Element = Resistor | Capacitor | Inductor | VoltageSource | CurrentSource | Diod
 
 @dataclass
 class TranSpec:
-    """`.tran tstep tstop`. Raises ValueError on an invalid spec."""
+    """`.tran tstep tstop [uic]`. Raises ValueError on an invalid spec. With `uic` the run starts
+    from the `.ic` capacitor voltages (and zero inductor currents) instead of a DC solution."""
 
     tstep: float
     tstop: float
+    uic: bool = False
 
     def __post_init__(self) -> None:
         if self.tstep <= 0 or self.tstop <= 0:
@@ -242,6 +244,7 @@ class Circuit:
     method: str = "trap"  # `.options method=trap|be`: integration method for .tran
     dc: DcSweep | None = None  # the `.dc` directive, if any
     models: dict[str, DiodeModel] = field(default_factory=dict)  # `.model` cards by name
+    ic: dict[str, float] = field(default_factory=dict)  # `.ic v(node)=volts` initial conditions (UIC only)
 
     def node_index(self) -> dict[str, int]:
         """Map each non-ground node to an MNA row/column 0..n-1 (first-appearance order).

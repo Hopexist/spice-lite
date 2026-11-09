@@ -179,12 +179,16 @@ def test_convergence_order_halving_h():
     assert np.allclose(trap[:-1] / trap[1:], 4, atol=0.2), trap[:-1] / trap[1:]
 
 
-def test_trapezoidal_is_only_first_order_for_an_ideal_step():
-    """Observed, and worth knowing: with a zero-rise step the trapezoid rule averages the
-    capacitor current before the step (0) with the one after (V/R), so the first step is
-    off by O(h) and trapezoidal degrades to first order -- slightly WORSE than BE here."""
+def test_trapezoidal_stays_second_order_for_an_ideal_step():
+    """A zero-rise step at t = 0 used to drop trapezoidal to first order (it averaged the
+    capacitor current BEFORE the step, 0, with the one after, V/R). The t = 0+ state is now
+    solved consistently (capacitor held at its voltage, source at its new value), so the
+    first step sees the right current and the error falls 4x per halving again."""
     trap = max_errors("trap", range(2, 8), ideal=True)
-    assert np.allclose(trap[:-1] / trap[1:], 2, atol=0.2), trap[:-1] / trap[1:]
+    be = max_errors("be", range(2, 8), ideal=True)
+    assert np.allclose(trap[:-1] / trap[1:], 4, atol=0.2), trap[:-1] / trap[1:]
+    assert np.allclose(be[:-1] / be[1:], 2, atol=0.15), be[:-1] / be[1:]
+    assert (trap < be).all()  # and trapezoidal is now the more accurate one, as it should be
 
 
 # ---- trapezoidal ringing vs backward Euler damping ----
