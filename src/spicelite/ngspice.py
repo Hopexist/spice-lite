@@ -11,6 +11,7 @@ import numpy as np
 
 from .analysis.ac import AcResult
 from .analysis.dc import OpResult
+from .analysis.tran import TranResult
 from .parser import parse
 
 
@@ -22,16 +23,20 @@ def find_ngspice() -> str | None:
     return shutil.which("ngspice_con") or shutil.which("ngspice")
 
 
-def _run(netlist_text: str, control: str) -> list[list[float]]:
+def _run(netlist_text: str, control: str, options: str = "") -> list[list[float]]:
     """Run `control` (ngspice commands, {out} = wrdata target) on the netlist; return the
-    numeric rows of the wrdata file (the header line is dropped)."""
+    numeric rows of the wrdata file (the header line is dropped). `options` is the body of
+    a `.options` line."""
     exe = find_ngspice()
     if exe is None:
         raise FileNotFoundError(
             "ngspice not found: put ngspice_con.exe/ngspice.exe on PATH or set NGSPICE=<path to exe>")
     # Drop the user's analysis cards so ours (in the .control block) is the only one.
     lines = [ln for ln in netlist_text.splitlines()
-             if (ln.split() or [""])[0].lower() not in (".end", ".op", ".ac")]
+             if (ln.split() or [""])[0].lower() not in
+             (".end", ".op", ".ac", ".tran", ".options", ".option")]
+    if options:
+        lines.append(f".options {options}")
     with tempfile.TemporaryDirectory() as d:
         out = Path(d) / "out.txt"
         # numdgt=16 -> full double precision in wrdata, needed for tight comparisons.
@@ -78,3 +83,29 @@ def run_ac(netlist_text: str) -> AcResult:
     z = rows[:, 1::3] + 1j * rows[:, 2::3]
     return AcResult(rows[:, 0], {n: z[:, i] for i, n in enumerate(nodes)},
                     {b: z[:, len(nodes) + i] for i, b in enumerate(branches)})
+
+
+def run_tran(netlist_text: str, reltol: float = 1e-6, abstol: float = 1e-14,
+             vntol: float = 1e-9, tmax_fraction: float = 0.1) -> TranResult:
+    """ngspice `.tran` as a reference: tolerances tightened (defaults are 1e-3 / 1e-12 / 1e-6)
+    and the max internal step capped at tmax_fraction * tstep (the `tmax` argument of `.tran`).
+
+    ngspice picks its OWN time points (adaptive, trapezoidal by default), so the result is
+    NOT on spicelite's grid: interpolate one onto the other before comparing.
+
+    Backward Euler is not compared: ngspice has no fixed-step mode (even Gear order 1 is
+    adaptive), so it could not reproduce spicelite's fixed-step BE error anyway.
+    """
+    circuit = parse(netlist_text)
+    if circuit.tran is None:
+        raise ValueError("netlist has no .tran directive")
+    nodes, branches, vectors = _vectors(circuit)
+    tmax = circuit.tran.tstep * tmax_fraction
+    rows = np.array(_run(netlist_text,
+                         f"tran {tmax!r} {circuit.tran.tstop!r} 0 {tmax!r}\n"
+                         "wrdata {out} " + " ".join(vectors),
+                         f"method=trap reltol={reltol!r} abstol={abstol!r} vntol={vntol!r}"))
+    t, first = np.unique(rows[:, 0], return_index=True)  # drop duplicate time points at breakpoints
+    v = rows[first][:, 1::2]
+    return TranResult(t, {n: v[:, i] for i, n in enumerate(nodes)},
+                      {b: v[:, len(nodes) + i] for i, b in enumerate(branches)})

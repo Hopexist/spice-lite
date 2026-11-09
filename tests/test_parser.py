@@ -18,6 +18,12 @@ def test_parse_value(text, expected):
     assert parse_value(text) == pytest.approx(expected, rel=1e-12)
 
 
+@pytest.mark.parametrize("text,exact", [("10u", 1e-5), ("1u", 1e-6), ("2.2k", 2200.0), ("3m", 3e-3), ("1e3k", 1e6)])
+def test_parse_value_is_correctly_rounded(text, exact):
+    # Multiplying 10 * 1e-6 gives 9.999999999999999e-06; scaling in decimal gives exactly 1e-05.
+    assert parse_value(text) == exact
+
+
 @pytest.mark.parametrize("bad", ["abc", "1x", "1kohm", "", "1..2", "k"])
 def test_bad_value(bad):
     with pytest.raises(NetlistError):
@@ -96,8 +102,8 @@ def test_error_line_is_start_of_continued_line():
     "t\nR1 a 0 0\n.end",           # zero resistance
     "t\nR1 a 0 -1k\n.end",         # negative resistance
     "t\nR1 a 0 1k\nr1 b 0 1k\n.end",  # duplicate (case-insensitive)
-    "t\n.tran 1u 1m\n.end",        # directive not yet supported
-    "t\nV1 a 0 SIN(0 1 1k)\n.end",  # source type not yet supported
+    "t\n.noise v(a) v1 dec 10 1 1k\n.end",  # directive not supported
+    "t\nV1 a 0 EXP(0 1 1m 1m 2m 1m)\n.end",  # source type not supported
     "t\nV1 a 0 DC\n.end",          # DC without value
 ])
 def test_errors(net):

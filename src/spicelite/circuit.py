@@ -5,6 +5,7 @@ source phases are radians here (degrees only exist in the netlist text).
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -49,12 +50,73 @@ class Inductor:
 
 
 @dataclass
+class Pulse:
+    """PULSE(v1 v2 td tr tf pw per): v1 until td, ramp to v2 over tr, hold pw, ramp back over tf,
+    repeat every per. At t <= td the value is v1, so a zero-rise step happens just after t=0."""
+
+    v1: float
+    v2: float
+    td: float
+    tr: float
+    tf: float
+    pw: float
+    per: float
+
+    def __post_init__(self) -> None:
+        if min(self.td, self.tr, self.tf, self.pw) < 0:
+            raise ValueError("PULSE td, tr, tf and pw must be >= 0")
+        if self.per <= 0 or self.per < self.tr + self.pw + self.tf:
+            raise ValueError("PULSE period must be positive and at least tr + pw + tf")
+
+    def value(self, t: float) -> float:
+        t -= self.td
+        if t <= 0:
+            return self.v1
+        t %= self.per
+        if t < self.tr:
+            return self.v1 + (self.v2 - self.v1) * t / self.tr
+        if t < self.tr + self.pw:
+            return self.v2
+        if t < self.tr + self.pw + self.tf:
+            return self.v2 + (self.v1 - self.v2) * (t - self.tr - self.pw) / self.tf
+        return self.v1
+
+
+@dataclass
+class Sin:
+    """SIN(vo va freq [td theta]): vo until td, then vo + va e^{-theta (t-td)} sin(2 pi f (t-td))."""
+
+    vo: float
+    va: float
+    freq: float
+    td: float = 0.0
+    theta: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.freq <= 0:
+            raise ValueError(f"SIN frequency must be positive, got {self.freq}")
+        if self.td < 0:
+            raise ValueError("SIN delay must be >= 0")
+
+    def value(self, t: float) -> float:
+        if t <= self.td:
+            return self.vo
+        dt = t - self.td
+        return self.vo + self.va * math.exp(-dt * self.theta) * math.sin(2 * math.pi * self.freq * dt)
+
+
+@dataclass
 class VoltageSource:
     name: str
     n_plus: str
     n_minus: str
     dc: float  # volts, v(n_plus) - v(n_minus), used by .op
     ac: complex = 0j  # phasor (magnitude * e^{j phase}), used by .ac
+    tran: Pulse | Sin | None = None  # time-domain waveform, used by .tran
+
+    def at(self, t: float | None) -> float:
+        """Source value at time t; t=None (or no waveform) means the DC value."""
+        return self.dc if t is None or self.tran is None else self.tran.value(t)
 
 
 @dataclass
@@ -66,9 +128,26 @@ class CurrentSource:
     n_minus: str
     dc: float  # amps
     ac: complex = 0j
+    tran: Pulse | Sin | None = None
+
+    at = VoltageSource.at
 
 
 Element = Resistor | Capacitor | Inductor | VoltageSource | CurrentSource
+
+
+@dataclass
+class TranSpec:
+    """`.tran tstep tstop`. Raises ValueError on an invalid spec."""
+
+    tstep: float
+    tstop: float
+
+    def __post_init__(self) -> None:
+        if self.tstep <= 0 or self.tstop <= 0:
+            raise ValueError(f"tstep and tstop must be positive, got {self.tstep} and {self.tstop}")
+        if self.tstop < self.tstep:
+            raise ValueError(f"tstop ({self.tstop}) is below tstep ({self.tstep})")
 
 
 @dataclass
@@ -105,6 +184,8 @@ class Circuit:
     elements: list[Element] = field(default_factory=list)
     op: bool = False  # a `.op` directive was present
     ac: AcSweep | None = None  # the `.ac` directive, if any
+    tran: TranSpec | None = None  # the `.tran` directive, if any
+    method: str = "trap"  # `.options method=trap|be`: integration method for .tran
 
     def node_index(self) -> dict[str, int]:
         """Map each non-ground node to an MNA row/column 0..n-1 (first-appearance order).

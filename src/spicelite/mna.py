@@ -9,9 +9,11 @@ from .elements import (stamp_capacitor, stamp_current_source, stamp_inductor, st
                        stamp_voltage_source)
 
 
-def build(circuit: Circuit, omega: float | None = None) -> tuple[np.ndarray, np.ndarray]:
-    """Return (A, b). omega=None builds the real DC system (sources use their DC value,
-    C open, L a 0 V source); otherwise the complex system at s = j*omega (sources use
+def build(circuit: Circuit, omega: float | None = None,
+          t: float | None = None) -> tuple[np.ndarray, np.ndarray]:
+    """Return (A, b). omega=None builds the real DC system (C open, L a 0 V source) with
+    sources at their DC value, or at their waveform value at time t if t is given (the
+    initial condition of .tran); otherwise the complex system at s = j*omega (sources use
     their AC phasor). Size is n_nodes + n_branches."""
     ac = omega is not None
     s = 1j * omega if ac else 0.0
@@ -29,9 +31,9 @@ def build(circuit: Circuit, omega: float | None = None) -> tuple[np.ndarray, np.
         elif isinstance(e, Inductor):
             stamp_inductor(A, idx, row_of[e.name], e, s)
         elif isinstance(e, VoltageSource):
-            stamp_voltage_source(A, b, idx, row_of[e.name], e, e.ac if ac else e.dc)
+            stamp_voltage_source(A, b, idx, row_of[e.name], e, e.ac if ac else e.at(t))
         elif isinstance(e, CurrentSource):
-            stamp_current_source(b, idx, e, e.ac if ac else e.dc)
+            stamp_current_source(b, idx, e, e.ac if ac else e.at(t))
     return A, b
 
 
@@ -78,9 +80,9 @@ def check_topology(circuit: Circuit, dc: bool = True) -> None:
             "connect them with a resistor or voltage source")
 
 
-def solve(circuit: Circuit, omega: float | None = None) -> np.ndarray:
+def solve(circuit: Circuit, omega: float | None = None, t: float | None = None) -> np.ndarray:
     check_topology(circuit, dc=omega is None)
-    A, b = build(circuit, omega)
+    A, b = build(circuit, omega, t)
     try:
         return np.linalg.solve(A, b)
     except np.linalg.LinAlgError as err:  # topology looked fine but the matrix is singular

@@ -1,0 +1,7 @@
+Underdamped series RLC step response: f0 ~ 5 kHz, zeta = 0.158, overshoot ~ 60 %
+V1 in 0 DC 0 PULSE(0 1 0 1u 1u 5m 10m)
+R1 in a 10
+L1 a out 1m
+C1 out 0 1u
+.tran 1u 1m
+.end

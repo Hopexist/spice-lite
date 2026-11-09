@@ -1,0 +1,6 @@
+1 kHz sine into an R-L divider (output across L): startup transient then steady state
+V1 in 0 DC 0 SIN(0 1 1k)
+R1 in out 1k
+L1 out 0 100m
+.tran 5u 5m
+.end
