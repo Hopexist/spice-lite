@@ -6,14 +6,16 @@ import math
 import re
 from decimal import Decimal
 
-from .circuit import (AcSweep, Capacitor, Circuit, CurrentSource, Inductor, NetlistError, Pulse,
-                      Resistor, Sin, TranSpec, VoltageSource)
+from .circuit import (AcSweep, Capacitor, Circuit, CurrentSource, DcSweep, Diode, DiodeModel,
+                      Inductor, NetlistError, Pulse, Resistor, Sin, TranSpec, VoltageSource)
 
 # "meg" must be tried before "m" (milli), or 1meg would parse as 1 milli.
 _SUFFIX = {"meg": 6, "f": -15, "p": -12, "n": -9, "u": -6, "m": -3, "k": 3, "g": 9, "t": 12}  # powers of 10
 _VALUE = re.compile(r"^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(meg|[fpnumkgt])?$")
 _WAVE = re.compile(r"\b(pulse|sin)\s*\(([^)]*)\)")
 _METHOD = re.compile(r"method=(trap|be)")
+_MODEL = re.compile(r"\.model\s+(\S+)\s+([a-z]+)\s*\(?([^)]*)\)?\s*$")
+_MODEL_PARAMS = ("is", "n", "rs")
 _TWO_TERMINAL = {"r": (Resistor, "resistance"), "c": (Capacitor, "capacitance"),
                  "l": (Inductor, "inductance")}
 
@@ -105,12 +107,46 @@ def _parse_tran(tokens: list[str], num: int) -> TranSpec:
         raise NetlistError(str(err), num) from None
 
 
+def _parse_model(low: str, num: int) -> DiodeModel:
+    """`.model name D(IS=.. N=.. RS=..)`; type and parameter names are case-insensitive (the
+    caller lowercases the line). Only the D type and the IS, N, RS parameters exist so far."""
+    m = _MODEL.match(low)
+    if not m:
+        raise NetlistError(".model needs: .model <name> D(IS=.. N=.. RS=..)", num)
+    name, kind, body = m.groups()
+    if kind != "d":
+        raise NetlistError(f"unsupported model type {kind!r}; only D (diode) is supported", num)
+    values: dict[str, float] = {}
+    for item in re.sub(r"\s*=\s*", "=", body.replace(",", " ")).split():
+        key, eq, val = item.partition("=")
+        if not eq or key not in _MODEL_PARAMS:
+            raise NetlistError(f"unsupported diode parameter {item!r}; supported: IS, N, RS", num)
+        if key in values:
+            raise NetlistError(f"duplicate diode parameter {key.upper()!r}", num)
+        values[key] = parse_value(val, num)
+    try:
+        return DiodeModel(name, **{k.upper(): v for k, v in values.items()})
+    except ValueError as err:
+        raise NetlistError(str(err), num) from None
+
+
+def _parse_dc(tokens: list[str], num: int) -> DcSweep:
+    if len(tokens) != 5:
+        raise NetlistError(".dc needs: .dc <source> <start> <stop> <step>", num)
+    try:
+        return DcSweep(tokens[1], *(parse_value(t, num) for t in tokens[2:]))
+    except ValueError as err:
+        raise NetlistError(str(err), num) from None
+
+
 def parse(text: str) -> Circuit:
     # The title is always line 1, even if it looks like a comment or element.
     lines = text.splitlines()
     circuit = Circuit(title=lines[0].strip() if lines else "")
     body = "\n".join(["", *lines[1:]])  # blank first line keeps numbering aligned
     seen: set[str] = set()
+    diode_lines: dict[str, int] = {}  # for errors that can only be found once all lines are read
+    dc_line = 0
 
     for num, line in _logical_lines(body):
         low, wave = line.lower(), None
@@ -121,7 +157,18 @@ def parse(text: str) -> Circuit:
         name = tokens[0]
         if name.startswith("."):
             if name == ".end":
-                return circuit
+                break
+            if name == ".model":
+                model = _parse_model(low, num)
+                if model.name in circuit.models:
+                    raise NetlistError(f"duplicate model name {model.name!r}", num)
+                circuit.models[model.name] = model
+                continue
+            if name == ".dc":
+                if circuit.dc is not None:
+                    raise NetlistError("duplicate .dc directive", num)
+                circuit.dc, dc_line = _parse_dc(tokens, num), num
+                continue
             if name == ".op":
                 if len(tokens) != 1:
                     raise NetlistError(".op takes no arguments", num)
@@ -145,7 +192,7 @@ def parse(text: str) -> Circuit:
                 continue
             raise NetlistError(f"unsupported directive {name!r}", num)
         kind = name[0]
-        if kind not in "rclvi":
+        if kind not in "rclvid":
             raise NetlistError(f"unsupported element {name!r}", num)
         if name in seen:
             raise NetlistError(f"duplicate element name {name!r}", num)
@@ -153,7 +200,12 @@ def parse(text: str) -> Circuit:
         if len(tokens) < (3 if wave else 4):
             raise NetlistError(f"{name!r} needs two nodes and a value", num)
         a, b = tokens[1], tokens[2]
-        if kind in _TWO_TERMINAL:
+        if kind == "d":
+            if len(tokens) != 4:
+                raise NetlistError(f"{name!r} takes exactly: anode cathode model", num)
+            circuit.elements.append(Diode(name, a, b, tokens[3]))
+            diode_lines[name] = num
+        elif kind in _TWO_TERMINAL:
             cls, what = _TWO_TERMINAL[kind]
             if len(tokens) != 4:
                 raise NetlistError(f"{name!r} takes exactly two nodes and a value", num)
@@ -164,6 +216,15 @@ def parse(text: str) -> Circuit:
         else:
             cls = VoltageSource if kind == "v" else CurrentSource
             circuit.elements.append(cls(name, a, b, *_source_values(tokens, num), wave))
+    # Checks that need the whole netlist (a .model or the swept source may come after its user).
+    for d in circuit.diodes():
+        if d.model_name not in circuit.models:
+            raise NetlistError(f"diode {d.name!r} uses unknown model {d.model_name!r}", diode_lines[d.name])
+        d.model = circuit.models[d.model_name]
+    if circuit.dc is not None:
+        src = next((e for e in circuit.elements if e.name == circuit.dc.source), None)
+        if not isinstance(src, (VoltageSource, CurrentSource)):
+            raise NetlistError(f".dc source {circuit.dc.source!r} is not a V or I source in this netlist", dc_line)
     return circuit  # shortcut: .end is optional here, require it if strictness matters
 
 

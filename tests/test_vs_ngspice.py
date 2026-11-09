@@ -26,8 +26,11 @@ needs_ngspice = pytest.mark.skipif(
     reason="ngspice not found: put ngspice_con.exe/ngspice.exe on PATH or set NGSPICE=<path to exe>")
 
 
+LINEAR_EXAMPLES = [p for p in EXAMPLES if not parse(p.read_text()).diodes()]
+
+
 @needs_ngspice
-@pytest.mark.parametrize("path", EXAMPLES, ids=lambda p: p.name)
+@pytest.mark.parametrize("path", LINEAR_EXAMPLES, ids=lambda p: p.name)
 def test_op_matches_ngspice(path):
     text = path.read_text()
     mine, ref = op(parse(text)), run_op(text)

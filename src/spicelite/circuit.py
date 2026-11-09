@@ -133,7 +133,32 @@ class CurrentSource:
     at = VoltageSource.at
 
 
-Element = Resistor | Capacitor | Inductor | VoltageSource | CurrentSource
+@dataclass
+class DiodeModel:
+    """`.model name D(IS=.. N=.. RS=..)`. Defaults match SPICE: IS = 1e-14 A, N = 1, RS = 0 ohm."""
+
+    name: str
+    IS: float = 1e-14  # saturation current (A)
+    N: float = 1.0  # emission coefficient
+    RS: float = 0.0  # series (ohmic) resistance (ohm)
+
+    def __post_init__(self) -> None:
+        if self.IS <= 0 or self.N <= 0 or self.RS < 0:
+            raise ValueError("diode model needs IS > 0, N > 0 and RS >= 0")
+
+
+@dataclass
+class Diode:
+    """Shockley diode, current flows anode -> cathode. `model` is filled in by the parser."""
+
+    name: str
+    anode: str
+    cathode: str
+    model_name: str
+    model: DiodeModel | None = field(default=None, compare=False, repr=False)
+
+
+Element = Resistor | Capacitor | Inductor | VoltageSource | CurrentSource | Diode
 
 
 @dataclass
@@ -179,6 +204,35 @@ class AcSweep:
 
 
 @dataclass
+class DcSweep:
+    """`.dc source start stop step`: sweep a V or I source's DC value. Raises ValueError if invalid."""
+
+    source: str
+    start: float
+    stop: float
+    step: float
+
+    def __post_init__(self) -> None:
+        if self.step == 0:
+            raise ValueError("step must be nonzero")
+        if (self.stop - self.start) * self.step < 0:
+            raise ValueError(f"step {self.step:g} has the wrong sign to go from {self.start:g} to {self.stop:g}")
+
+    def values(self) -> np.ndarray:
+        n = int(np.floor((self.stop - self.start) / self.step + 1e-9)) + 1  # 1e-9: round-off guard
+        return self.start + self.step * np.arange(n)
+
+
+class ConvergenceError(Exception):
+    """Newton-Raphson did not converge. `worst_node` is the unknown that was still moving most."""
+
+    def __init__(self, message: str, iterations: int, worst_node: str):
+        self.iterations = iterations
+        self.worst_node = worst_node
+        super().__init__(message)
+
+
+@dataclass
 class Circuit:
     title: str = ""
     elements: list[Element] = field(default_factory=list)
@@ -186,6 +240,8 @@ class Circuit:
     ac: AcSweep | None = None  # the `.ac` directive, if any
     tran: TranSpec | None = None  # the `.tran` directive, if any
     method: str = "trap"  # `.options method=trap|be`: integration method for .tran
+    dc: DcSweep | None = None  # the `.dc` directive, if any
+    models: dict[str, DiodeModel] = field(default_factory=dict)  # `.model` cards by name
 
     def node_index(self) -> dict[str, int]:
         """Map each non-ground node to an MNA row/column 0..n-1 (first-appearance order).
@@ -202,6 +258,9 @@ class Circuit:
     def voltage_sources(self) -> list[VoltageSource]:
         return [e for e in self.elements if isinstance(e, VoltageSource)]
 
+    def diodes(self) -> list[Diode]:
+        return [e for e in self.elements if isinstance(e, Diode)]
+
     def branch_elements(self) -> list[VoltageSource | Inductor]:
         """Elements that carry an extra MNA unknown (their branch current), in netlist order.
 
@@ -215,4 +274,6 @@ class Circuit:
 def element_nodes(e: Element) -> tuple[str, str]:
     if isinstance(e, (VoltageSource, CurrentSource)):
         return e.n_plus, e.n_minus
+    if isinstance(e, Diode):
+        return e.anode, e.cathode
     return e.n1, e.n2

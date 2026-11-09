@@ -35,3 +35,15 @@ def test_ringing_demo_writes_a_png(tmp_path):
 
     ringing_demo(tmp_path / "r.png")
     assert (tmp_path / "r.png").read_bytes()[:4] == b"\x89PNG"
+
+
+def test_sweep_plot_linear_and_log_with_zeros(tmp_path):
+    from spicelite.plotting import sweep_plot
+
+    x = np.linspace(0, 1, 30)
+    i = np.exp(x * 20) * 1e-9 * (x > 0)  # first point is exactly 0: must not break the log axis
+    sweep_plot(x, i, tmp_path / "log.png", "iv", "V", "I", i, logy=True)
+    sweep_plot(x, x, tmp_path / "lin.png", "t", "V", "I", x)
+    sweep_plot(x, x, tmp_path / "noref.png")
+    for n in ("log", "lin", "noref"):
+        assert (tmp_path / f"{n}.png").read_bytes()[:4] == b"\x89PNG"

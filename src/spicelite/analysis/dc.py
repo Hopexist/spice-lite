@@ -1,24 +1,69 @@
-"""`.op` DC operating point."""
+"""`.op` DC operating point and `.dc` source sweep."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from ..circuit import Circuit
+import numpy as np
+
+from ..circuit import Circuit, DcSweep
 from ..mna import solve
+from .newton import solve_nonlinear
 
 
 @dataclass
 class OpResult:
     voltages: dict[str, float]  # node name -> volts (ground "0" omitted)
     currents: dict[str, float]  # V-source / inductor name -> amps, SPICE sign: into n+, through the element
+    iterations: int = 0  # Newton iterations (0 for a linear circuit: one direct solve)
+    strategy: str = "linear"  # "linear", "newton", or "gmin" (the fallback was needed)
+
+
+@dataclass
+class DcSweepResult:
+    sweep: np.ndarray  # swept source values
+    voltages: dict[str, np.ndarray]  # node name -> volts at each sweep point
+    currents: dict[str, np.ndarray]  # V-source / inductor name -> amps at each sweep point
+    iterations: np.ndarray  # Newton iterations per point (0 for a linear circuit)
+
+
+def _solve_point(circuit: Circuit, x0: np.ndarray | None):
+    """One DC solution -> (x, node index, iterations, strategy). Linear circuits take the
+    direct path (a single numpy solve); circuits with diodes go through Newton-Raphson."""
+    if circuit.diodes():
+        r = solve_nonlinear(circuit, x0=x0)
+        return r.x, r.idx, r.iterations, r.strategy
+    return solve(circuit), circuit.node_index(), 0, "linear"
+
+
+def _unpack(circuit: Circuit, x: np.ndarray, idx: dict[str, int]):
+    """Pick the user-visible unknowns out of x (hidden diode-RS nodes are left out)."""
+    n = len(idx)  # branch currents follow ALL node unknowns
+    voltages = {node: float(x[idx[node]]) for node in circuit.node_index()}
+    currents = {e.name: float(x[n + k]) for k, e in enumerate(circuit.branch_elements())}
+    return voltages, currents
 
 
 def op(circuit: Circuit) -> OpResult:
-    """DC solve: capacitors open, inductors shorted (0 V sources with a branch current)."""
-    x = solve(circuit)
-    idx = circuit.node_index()
-    n = len(idx)
-    return OpResult(
-        voltages={node: float(x[i]) for node, i in idx.items()},
-        currents={e.name: float(x[n + k]) for k, e in enumerate(circuit.branch_elements())},
+    """DC solve: capacitors open, inductors shorted, diodes by Newton-Raphson."""
+    x, idx, iters, strategy = _solve_point(circuit, None)
+    return OpResult(*_unpack(circuit, x, idx), iters, strategy)
+
+
+def dc_sweep(circuit: Circuit, sweep: DcSweep | None = None) -> DcSweepResult:
+    """Sweep one source's DC value; each point starts Newton from the previous solution."""
+    sweep = sweep or circuit.dc
+    if sweep is None:
+        raise ValueError("no .dc directive in the circuit and no sweep given")
+    values = sweep.values()
+    points, x = [], None
+    for v in values:
+        swept = replace(circuit, elements=[replace(e, dc=v) if e.name == sweep.source else e
+                                           for e in circuit.elements])
+        x, idx, iters, _ = _solve_point(swept, x)
+        points.append((*_unpack(circuit, x, idx), iters))
+    return DcSweepResult(
+        values,
+        {n: np.array([p[0][n] for p in points]) for n in points[0][0]},
+        {n: np.array([p[1][n] for p in points]) for n in points[0][1]},
+        np.array([p[2] for p in points]),
     )

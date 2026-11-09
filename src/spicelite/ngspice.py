@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from .analysis.ac import AcResult
-from .analysis.dc import OpResult
+from .analysis.dc import DcSweepResult, OpResult
 from .analysis.tran import TranResult
 from .parser import parse
 
@@ -34,7 +34,7 @@ def _run(netlist_text: str, control: str, options: str = "") -> list[list[float]
     # Drop the user's analysis cards so ours (in the .control block) is the only one.
     lines = [ln for ln in netlist_text.splitlines()
              if (ln.split() or [""])[0].lower() not in
-             (".end", ".op", ".ac", ".tran", ".options", ".option")]
+             (".end", ".op", ".ac", ".tran", ".dc", ".options", ".option")]
     if options:
         lines.append(f".options {options}")
     with tempfile.TemporaryDirectory() as d:
@@ -109,3 +109,21 @@ def run_tran(netlist_text: str, reltol: float = 1e-6, abstol: float = 1e-14,
     v = rows[first][:, 1::2]
     return TranResult(t, {n: v[:, i] for i, n in enumerate(nodes)},
                       {b: v[:, len(nodes) + i] for i, b in enumerate(branches)})
+
+
+def run_dc(netlist_text: str, options: str = "") -> DcSweepResult:
+    """ngspice `.dc` sweep using the netlist's own sweep. Default tolerances (reltol 1e-3 ...)
+    unless `options` (the body of a `.options` line) says otherwise. wrdata writes
+    (sweep value, result) column pairs, one pair per requested vector."""
+    circuit = parse(netlist_text)
+    if circuit.dc is None:
+        raise ValueError("netlist has no .dc directive")
+    s = circuit.dc
+    nodes, branches, vectors = _vectors(circuit)
+    rows = np.array(_run(netlist_text,
+                         f"dc {s.source} {s.start!r} {s.stop!r} {s.step!r}\n"
+                         "wrdata {out} " + " ".join(vectors), options))
+    v = rows[:, 1::2]
+    return DcSweepResult(rows[:, 0], {n: v[:, i] for i, n in enumerate(nodes)},
+                         {b: v[:, len(nodes) + i] for i, b in enumerate(branches)},
+                         np.zeros(len(rows), dtype=int))

@@ -3,18 +3,19 @@ from __future__ import annotations
 
 import numpy as np
 
-from .circuit import (GROUND, Capacitor, Circuit, CurrentSource, Inductor, Resistor,
+from .circuit import (GROUND, Capacitor, Circuit, CurrentSource, Diode, Inductor, Resistor,
                       SingularCircuitError, VoltageSource, element_nodes)
 from .elements import (stamp_capacitor, stamp_current_source, stamp_inductor, stamp_resistor,
                        stamp_voltage_source)
 
 
-def build(circuit: Circuit, omega: float | None = None,
-          t: float | None = None) -> tuple[np.ndarray, np.ndarray]:
+def build(circuit: Circuit, omega: float | None = None, t: float | None = None,
+          nonlinear_ok: bool = False) -> tuple[np.ndarray, np.ndarray]:
     """Return (A, b). omega=None builds the real DC system (C open, L a 0 V source) with
     sources at their DC value, or at their waveform value at time t if t is given (the
     initial condition of .tran); otherwise the complex system at s = j*omega (sources use
-    their AC phasor). Size is n_nodes + n_branches."""
+    their AC phasor). Size is n_nodes + n_branches. Diodes are skipped only when the Newton
+    solver asks (nonlinear_ok): it stamps their companion models itself."""
     ac = omega is not None
     s = 1j * omega if ac else 0.0
     idx = circuit.node_index()
@@ -34,6 +35,10 @@ def build(circuit: Circuit, omega: float | None = None,
             stamp_voltage_source(A, b, idx, row_of[e.name], e, e.ac if ac else e.at(t))
         elif isinstance(e, CurrentSource):
             stamp_current_source(b, idx, e, e.ac if ac else e.at(t))
+        elif isinstance(e, Diode) and not nonlinear_ok:
+            raise NotImplementedError(
+                f"{e.name}: diodes are only supported in .op/.dc (Newton solver); "
+                "nonlinear .ac and .tran come in a later milestone")
     return A, b
 
 

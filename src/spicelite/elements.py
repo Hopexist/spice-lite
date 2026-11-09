@@ -9,9 +9,16 @@ at DC a capacitor (admittance s*C = 0) vanishes and an inductor's row becomes v+
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
-from .circuit import Capacitor, CurrentSource, Inductor, Resistor, VoltageSource
+from .circuit import Capacitor, CurrentSource, Diode, DiodeModel, Inductor, Resistor, VoltageSource
+
+# ngspice-41's constants (CODATA 2014) and default 27 C, so Vt = kT/q = 0.0258649170 V matches
+# ngspice digit for digit; GMIN is the conductance SPICE puts across every diode junction.
+VT = 1.38064852e-23 * 300.15 / 1.6021766208e-19
+GMIN = 1e-12
 
 
 def _stamp_admittance(A: np.ndarray, idx: dict[str, int], n1: str, n2: str, y: complex) -> None:
@@ -104,3 +111,35 @@ def stamp_current_source(b: np.ndarray, idx: dict[str, int], i: CurrentSource,
         b[p] -= amps
     if q is not None:
         b[q] += amps
+
+
+def diode_iv(m: DiodeModel, vd: float) -> tuple[float, float]:
+    """Shockley current and conductance at junction voltage vd, plus the GMIN shunt:
+    i = IS (e^{vd/(N Vt)} - 1) + GMIN vd,   g = di/dvd = IS/(N Vt) e^{vd/(N Vt)} + GMIN.
+    shortcut: the exponent is clipped at 700 to avoid overflow, so currents beyond ~18 V
+    forward are wrong; Newton's voltage limiting keeps real iterates far below that."""
+    nvt = m.N * VT
+    e = math.exp(min(vd / nvt, 700.0))
+    return m.IS * (e - 1.0) + GMIN * vd, m.IS / nvt * e + GMIN
+
+
+def stamp_diode(A: np.ndarray, b: np.ndarray, idx: dict[str, int], d: Diode,
+                vd: float) -> tuple[float, float]:
+    """Newton companion model of a diode, linearised at junction voltage vd (anode - cathode):
+    i(v) ~ g v + Ieq with g = di/dv at vd and Ieq = i(vd) - g vd. That is a conductance g in
+    parallel with a current source Ieq flowing anode -> cathode. (Series resistance RS is a
+    separate resistor, added by the Newton solver.) Returns (g, Ieq).
+
+                  anode  cathode |  b
+          anode  [  +g     -g    | -Ieq ]
+          cathode[  -g     +g    | +Ieq ]
+    """
+    i, g = diode_iv(d.model, vd)
+    ieq = i - g * vd
+    _stamp_admittance(A, idx, d.anode, d.cathode, g)
+    p, q = idx.get(d.anode), idx.get(d.cathode)
+    if p is not None:
+        b[p] -= ieq
+    if q is not None:
+        b[q] += ieq
+    return g, ieq

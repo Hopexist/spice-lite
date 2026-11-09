@@ -11,8 +11,9 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
 from .analysis.ac import ac, magnitude_db, phase_degrees  # noqa: E402
+from .analysis.dc import dc_sweep  # noqa: E402
 from .analysis.tran import ResolutionWarning, tran  # noqa: E402
-from .ngspice import find_ngspice, run_ac, run_tran  # noqa: E402
+from .ngspice import find_ngspice, run_ac, run_dc, run_tran  # noqa: E402
 from .parser import parse, parse_file  # noqa: E402
 
 
@@ -52,6 +53,36 @@ def waveform(t: np.ndarray, mine: np.ndarray, path: str | Path, title: str = "",
     ax.grid(True, alpha=0.3)
     ax_e.set_ylabel("Error (V)")
     ax_e.set_xlabel(f"Time ({unit})")
+    ax_e.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
+
+
+def sweep_plot(x: np.ndarray, mine: np.ndarray, path: str | Path, title: str = "", xlabel: str = "",
+               ylabel: str = "", ref: np.ndarray | None = None, logy: bool = False,
+               err_floor: float = 0.0) -> None:
+    """A .dc sweep result over its error curve. `ref` (ngspice, same sweep points) is drawn
+    dashed. With logy the curves are |y| on a log axis and the error is RELATIVE, so the
+    14-decade diode I-V curve is checked point by point rather than only near its peak. The
+    relative error is only drawn where |ref| > err_floor: below ngspice's default abstol
+    (1e-12 A) its own currents have no relative accuracy, so those points would just show
+    ngspice's tolerance floor."""
+    pos = lambda a: np.where(np.abs(a) > 0, np.abs(a), np.nan)  # noqa: E731  (log axes can't show 0)
+    fig, (ax, ax_e) = plt.subplots(2, 1, sharex=True, figsize=(7, 6),
+                                   gridspec_kw={"height_ratios": [3, 1]})
+    draw = ax.semilogy if logy else ax.plot
+    draw(x, pos(mine) if logy else mine, lw=2.5, label="spicelite")
+    if ref is not None:
+        draw(x, pos(ref) if logy else ref, "k--", lw=1.2, label="ngspice")
+        err = np.where(np.abs(ref) > err_floor, (mine - ref) / pos(ref), np.nan) if logy else mine - ref
+        ax_e.plot(x, err, color="tab:red", lw=1.2)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    ax.legend()
+    ax.grid(True, which="both", alpha=0.3)
+    ax_e.set_ylabel("Relative error" if logy else "Error")
+    ax_e.set_xlabel(xlabel)
     ax_e.grid(True, alpha=0.3)
     fig.tight_layout()
     fig.savefig(path, dpi=130)
@@ -107,6 +138,19 @@ def main(examples_dir: str = "examples", out_dir: str = "docs") -> None:
         print(f"wrote {out_dir}/wave_{name}.png{note}")
     ringing_demo(Path(out_dir) / "trap_ringing.png")
     print(f"wrote {out_dir}/trap_ringing.png")
+    # (example, plotted signal, sign, output file, title, y label, log scale)
+    for name, sig, sign, png, title, ylabel, logy in (
+            ("diode_rectifier_dc", "out", 1, "transfer_rectifier", "Diode rectifier transfer curve", "v(out) (V)", False),
+            ("diode_clamp", "out", 1, "transfer_clamp", "Two-diode clamp transfer curve", "v(out) (V)", False),
+            ("diode_iv_sweep", "v1", -1, "iv_diode", "Diode I-V curve (IS = 1e-14 A, N = 1, RS = 1 ohm)",
+             "Diode current (A), log scale", True)):
+        path = Path(examples_dir) / f"{name}.cir"
+        mine = dc_sweep(parse_file(str(path)))
+        ref = run_dc(path.read_text()) if have_ngspice else None
+        pick = lambda r: sign * (r.currents if sig == "v1" else r.voltages)[sig]  # noqa: E731
+        sweep_plot(mine.sweep, pick(mine), Path(out_dir) / f"{png}.png", title, "V1 (V)", ylabel,
+                   pick(ref) if ref else None, logy, err_floor=1e-9)
+        print(f"wrote {out_dir}/{png}.png{note}")
 
 
 if __name__ == "__main__":

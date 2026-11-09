@@ -1,0 +1,7 @@
+Diode I-V curve with 1 ohm series resistance (the diode current is -i(V1)); spans ~14 decades
+V1 a 0 DC 0.6
+D1 a 0 dm
+.model dm D(IS=1e-14 N=1 RS=1)
+.op
+.dc V1 0 1 0.01
+.end

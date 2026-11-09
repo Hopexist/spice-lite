@@ -1,0 +1,9 @@
+Two-diode clamp: the output is held to about +/-0.65 V while the input swings +/-5 V
+V1 in 0 DC 3
+R1 in out 1k
+D1 out 0 dm
+D2 0 out dm
+.model dm D(IS=1e-14 N=1)
+.op
+.dc V1 -5 5 0.1
+.end

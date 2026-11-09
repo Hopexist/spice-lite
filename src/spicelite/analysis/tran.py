@@ -61,6 +61,8 @@ def tran(circuit: Circuit, spec: TranSpec | None = None, method: str | None = No
     spec = spec or circuit.tran
     if spec is None:
         raise ValueError("no .tran directive in the circuit and no spec given")
+    if circuit.diodes():
+        raise NotImplementedError("diodes are not supported in .tran yet (nonlinear transient is the next milestone)")
     method = method or circuit.method
     if method not in ("trap", "be"):
         raise ValueError(f"method must be 'trap' or 'be', got {method!r}")

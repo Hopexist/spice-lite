@@ -1,0 +1,8 @@
+Diode rectifier into a 1k load: v(out) = V1 - Vd (about 4.3 V at 5 V in); .dc gives the transfer curve
+V1 in 0 DC 5
+D1 in out dm
+R1 out 0 1k
+.model dm D(IS=1e-14 N=1 RS=0)
+.op
+.dc V1 -2 5 0.05
+.end
