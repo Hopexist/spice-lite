@@ -1,4 +1,4 @@
-# Overnight report (branch `overnight-m5-m7`, cut from `main` at e641ad2)
+# Overnight report (branch `overnight-m5-m7`, cut from `main` at 805e627)
 
 Nothing was pushed, tagged or forced; `main` is untouched. Commits: `M5: controlled sources and op-amp`,
 `M7: CLI, sparse solver, CI`, `Audit pass: docs, consistency, edge cases` (hashes: `git log --oneline`).
@@ -6,7 +6,7 @@ Nothing was pushed, tagged or forced; `main` is untouched. Commits: `M5: control
 ## Tests
 | Run | Result |
 |---|---|
-| Baseline (main @ e641ad2), ngspice via `$NGSPICE` | 309 passed, 0 skipped |
+| Baseline (main @ 805e627), ngspice via `$NGSPICE` | 309 passed, 0 skipped |
 | End of Phase 1 | 425 passed, 0 skipped |
 | End of Phase 2 | 497 passed, 0 skipped |
 | **Final, ngspice enabled** | **520 passed, 0 skipped** |

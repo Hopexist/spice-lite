@@ -95,7 +95,8 @@ function applyTheme(mode: ThemeMode) {
   }
   const label = { system: "Auto", light: "Light", dark: "Dark" }[mode];
   $("theme-label").textContent = `Theme: ${label}`;
-  $("theme").setAttribute("aria-label", `Color theme: ${mode === "system" ? "follow system" : mode}. Press to change.`);
+  // the accessible name must contain the visible text ("Theme: Auto"), or speech-control users cannot say what they see
+  $("theme").setAttribute("aria-label", `Theme: ${label}${mode === "system" ? " (follows your system)" : ""}. Press to change.`);
   redrawPlots();
 }
 function currentTheme(): ThemeMode {

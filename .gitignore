@@ -16,3 +16,10 @@ web/public/wheels/
 web/test-results/
 web/playwright-report/
 graphify-out/
+
+# local tool state and quick-start output
+.claude-flow/
+out/
+
+# private notes: kept outside the repository (see STATUS.md, privacy cleanup)
+docs/resume-notes.md

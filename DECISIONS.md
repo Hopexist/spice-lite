@@ -97,7 +97,7 @@ Each entry: choice, alternatives, why.
 
 ## D15. Branch cut from `overnight-m5-m7`, not main
 - **Choice:** `main` does not contain M7 (the merge was blocked by the permission classifier), so the branch
-  starts at `overnight-m5-m7` (35ecdb5), as the brief allowed.
+  starts at `overnight-m5-m7` (d6ec1f2), as the brief allowed.
 
 ## D16. ngspice "present" again means reachable through `$NGSPICE`
 - Same as D1: `which ngspice` finds nothing, the bundled ngspice-41 is used and every committing run needs 0 skips.
@@ -126,7 +126,7 @@ Each entry: choice, alternatives, why.
   This widens the nonlinear group, it does not weaken any test.
 
 ## D22. A second golden file freezes M7 results
-- `tests/golden_m1_m7.json` (26 examples, from commit 35ecdb5 via `git archive`) joins the v0.6 file, so the controlled-source
+- `tests/golden_m1_m7.json` (26 examples, from commit d6ec1f2 via `git archive`) joins the v0.6 file, so the controlled-source
   examples are protected against later changes as well.
 
 ## D23. Adaptive stepping is opt-in (`.options step=adaptive` or `adaptive=`); fixed-step stays the default
@@ -462,3 +462,46 @@ Thesis: one authored moment (the plot reveal); everything else is feedback or st
 - An e2e run straight after the screenshot scripts had 3 failures (one was the reference-overlay test); the next full run passed 24/24
   and the three tests then passed 9 of 9 repeats. Not reproduced, cause not confirmed: recorded as intermittent, not fixed.
 - The refactor report moves to `REPORT_REFACTOR.md`; `REPORT.md` is the UI polish report (same convention as D38 and D44).
+
+## D53: Portfolio polish run (branch `portfolio-polish`, cut from main as instructed)
+- **Base branch.** `harden-inputs` (input validation, 2 commits) exists but is not merged into main. The brief said to cut from main, so this
+  branch does not contain it and nothing written here describes it. Merge order is the owner's call.
+- **Personal-information scan** (tracked files; patterns for home paths, user and machine names, tokens, e-mail): no home paths, machine names or
+  tokens in any tracked file. Remaining items, left as they are because they are deliberate or not editable without rewriting history:
+  the MIT `LICENSE` names "Ethaa"; `CLAUDE.md` names the university; every commit before this run carries the author e-mail address
+  from the local git config (a rewrite would need a forced push, which the brief forbids). Recommendation in `REPORT_PORTFOLIO.md`.
+- **README**: new front door written above the existing sections, which were kept verbatim and only reordered.
+  The "Known limitations" bullets moved into a new Limitations section; the unsupported-feature list there was checked by parsing a one-line
+  example of each feature (all raise `NetlistError` with a line number).
+- **Live-demo link and badge** point at `https://hopexist.github.io/spice-lite/`. It 404s until GitHub Pages is enabled (Settings, Pages, Source:
+  GitHub Actions) and the repository is public; recorded as a manual step instead of hiding the link.
+- **Convergence table** is generated (`scripts/convergence_table.py` -> `docs/convergence.md`) with the same circuit as the convergence tests,
+  so the README can link a real table instead of a sentence.
+- **Sparse benchmark re-run** (`docs/benchmark_sparse.md`): the new speed-ups differ from the old README table (for example 43.5x vs 76.7x for the
+  1000-section `.op`). Wall-clock noise on a laptop; the README now says "tens of times" and keeps the raw output.
+- **Plots regenerated.** The 25 matplotlib figures in `docs/` that the README describes as "spicelite vs ngspice" had been generated while ngspice was
+  not reachable, so they showed spicelite only with an empty error panel. `python -m spicelite.plotting` with `NGSPICE` set regenerates them with the
+  dashed ngspice curve and the error trace. No simulation result changed (824 tests, goldens untouched).
+- **Hero image** `docs/hero.png`: the built site running `cmos_inverter_vtc` with the ngspice overlay, captured headlessly in Edge
+  (`web/scripts/hero.mjs`). No GIF: stitching frames needs an imaging dependency that is not a project dependency (ask before adding one).
+- **Write-up** (`docs/writeup.md`) is first person as asked, but states that the project was built with Claude Code (the commits say so) and leaves
+  an `[EDIT]` marker for the owner to describe their own role. Passing an AI-assisted project off as unassisted would not survive an interview.
+- **Social card** `web/public/social-preview.png` (1200 x 630, `web/scripts/social.mjs`), `og:` and `twitter:` tags in `web/index.html`. They need
+  absolute URLs, so they assume the Pages address above; a comment in `index.html` says to change them if the repository is renamed.
+- **About section** on the site states what the privacy claim actually is: the netlist is never uploaded, but the page does fetch static files and
+  Python, NumPy and SciPy from the jsDelivr CDN (about 24 MB). "Nothing leaves the browser" would overstate it.
+- **404 page** (`web/public/404.html`) links to `/spice-lite/` with an absolute path, because GitHub Pages serves it for any missing path at any depth.
+  Not testable with `vite preview` (it falls back to `index.html`), so it is verified only as a file in `dist/`.
+- **robots.txt** added (allow all). Lighthouse (desktop, Edge, navigation mode, before the label and robots fixes): accessibility 100, best
+  practices 100, SEO 92, agentic browsing 67. Failures: `robots.txt` (the preview server answered with `index.html`), `llms.txt` (not added: an
+  experimental file with no stated need) and a label mismatch on the theme button, whose accessible name did not contain its visible text
+  "Theme: Auto"; fixed by making the name start with the visible text. **Not re-measured after the fixes**: the audit tool lost its connection, so
+  the fixes are verified by the e2e tests only. Performance was not measured (the tool excludes it).
+- The stale "809 Python tests" in the site's capability card is now 824 (the card is hand-written HTML, so it can go stale again).
+
+## D54: Privacy cleanup before going public (history rewrite)
+- **Choice:** rewrite all history locally with `git filter-repo`: drop `docs/resume-notes.md`, map the personal e-mail to the GitHub noreply address (mailmap, name and trailers untouched).
+- **Alternatives:** leave history as is and set the noreply address for new commits only (every existing commit would still publish the e-mail address forever); `git filter-branch` (slower and discouraged; not needed because filter-repo installed fine with `pip --user`).
+- **The noreply address** is `101818557+Hopexist@users.noreply.github.com`: the standard `<id>+<login>` form, with the id read from the logged-in account via `gh api user`. Verify it in GitHub Settings > Emails; if it differs, redo the mailmap step from the backup.
+- **Why not `--refs`:** filter-repo does not rewrite commits that an excluded ref still reaches, so backup branches in the same repo defeat it. The backups live in a folder copy and a bundle, and the backup branches are re-created from the copy afterwards.
+- **Cost:** every commit hash on every branch and tag changed, so the remote must be force-pushed; collaborators or forks (there are none known) would have to re-clone. Short hashes quoted in `CHANGELOG.md` and the reports were mapped to the new ones from filter-repo's commit map.

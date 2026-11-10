@@ -302,7 +302,13 @@ table.data td.num { font-variant-numeric: tabular-nums; }
 @keyframes d-note { 0%, 44% { opacity: 0; } 50%, 88% { opacity: 1; } 94%, 100% { opacity: 0; } }
 
 /* ---- sections below the workspace ---- */
-.caps, .elements { padding: var(--s7) var(--gutter) var(--s6); border-top: var(--rule-strong) solid var(--ink); }
+.caps, .elements, .about { padding: var(--s7) var(--gutter) var(--s6); border-top: var(--rule-strong) solid var(--ink); }
+.about-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: var(--s5); }
+.about-grid h3 { margin: 0 0 var(--s1); font: 700 var(--fs-md) var(--sans); }
+.about-grid p, .about-grid li { margin: 0; color: var(--muted); max-width: 60ch; }
+.about-grid ul { margin: 0; padding-left: var(--s4); display: grid; gap: var(--s1); }
+.about-grid code { font: var(--fs-sm) var(--mono); color: var(--ink); }
+.about-grid a { color: var(--ink); text-underline-offset: 3px; }
 .section-h { margin: 0 0 var(--s2); font: 700 var(--fs-xl) / var(--lh-tight) var(--sans); letter-spacing: -0.015em; }
 .section-sub { margin: 0 0 var(--s5); max-width: 70ch; color: var(--muted); }
 /* a ruled feature table, not a row of cards: shared hairlines, varied spans, a small real diagram in each cell */
