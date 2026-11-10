@@ -169,3 +169,14 @@ GitHub drop those objects, so the history was cleaned once more before the new p
 Checks against a bundle taken just before this pass: only `CLAUDE.md`, `DECISIONS.md`, `REPORT_M5_M7.md` and `REPORT_M8_M9.md` differ, on every
 branch; commit messages and timestamps are identical; none of the replaced strings remains in any revision. Commit hashes quoted in the
 documents were mapped to the new commits by matching timestamp and message.
+
+Outcome: the GitHub repository was deleted and recreated (public, same name) and the cleaned history pushed: `main`, 7 other branches and
+6 tags. Through the API, the old commits now answer "No commit found", and all 468 author and committer entries across the branches are the
+noreply address. Pages was re-enabled (GitHub Actions source) and deployed; the live site answers HTTP 200. The local backups that held the
+old data (folder copy and both bundles) were deleted and the old objects purged from the local `.git` (no unreachable objects remain).
+
+First CI run on GitHub (never run before): the web job passed; the Python jobs ran 824 tests on 3.10, 3.11 and 3.12 with ngspice 42 and
+**823 passed, 1 failed**: the full-precision golden test for `diode_rectifier_tran` (`tests/test_regression.py`, rtol 1e-12, atol 1e-18),
+where 91 of 10,004 samples of a small current differ by at most 8.4e-15 A between Linux and the Windows machine that wrote the goldens
+(Newton stops at a rounding-dependent point inside its tolerance). Every ngspice comparison passed, against ngspice 42. Not fixed: making it
+pass means loosening a test, which the project rules leave to the owner.
