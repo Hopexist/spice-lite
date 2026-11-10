@@ -20,3 +20,6 @@ graphify-out/
 # local tool state and quick-start output
 .claude-flow/
 out/
+
+# private notes: kept outside the repository (see STATUS.md, privacy cleanup)
+docs/resume-notes.md

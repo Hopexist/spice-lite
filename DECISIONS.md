@@ -97,7 +97,7 @@ Each entry: choice, alternatives, why.
 
 ## D15. Branch cut from `overnight-m5-m7`, not main
 - **Choice:** `main` does not contain M7 (the merge was blocked by the permission classifier), so the branch
-  starts at `overnight-m5-m7` (35ecdb5), as the brief allowed.
+  starts at `overnight-m5-m7` (d6ec1f2), as the brief allowed.
 
 ## D16. ngspice "present" again means reachable through `$NGSPICE`
 - Same as D1: `which ngspice` finds nothing, the bundled ngspice-41 is used and every committing run needs 0 skips.
@@ -126,7 +126,7 @@ Each entry: choice, alternatives, why.
   This widens the nonlinear group, it does not weaken any test.
 
 ## D22. A second golden file freezes M7 results
-- `tests/golden_m1_m7.json` (26 examples, from commit 35ecdb5 via `git archive`) joins the v0.6 file, so the controlled-source
+- `tests/golden_m1_m7.json` (26 examples, from commit d6ec1f2 via `git archive`) joins the v0.6 file, so the controlled-source
   examples are protected against later changes as well.
 
 ## D23. Adaptive stepping is opt-in (`.options step=adaptive` or `adaptive=`); fixed-step stays the default
@@ -498,3 +498,10 @@ Thesis: one authored moment (the plot reveal); everything else is feedback or st
   "Theme: Auto"; fixed by making the name start with the visible text. **Not re-measured after the fixes**: the audit tool lost its connection, so
   the fixes are verified by the e2e tests only. Performance was not measured (the tool excludes it).
 - The stale "809 Python tests" in the site's capability card is now 824 (the card is hand-written HTML, so it can go stale again).
+
+## D54: Privacy cleanup before going public (history rewrite)
+- **Choice:** rewrite all history locally with `git filter-repo`: drop `docs/resume-notes.md`, map the personal e-mail to the GitHub noreply address (mailmap, name and trailers untouched).
+- **Alternatives:** leave history as is and set the noreply address for new commits only (every existing commit would still publish the e-mail address forever); `git filter-branch` (slower and discouraged; not needed because filter-repo installed fine with `pip --user`).
+- **The noreply address** is `101818557+Hopexist@users.noreply.github.com`: the standard `<id>+<login>` form, with the id read from the logged-in account via `gh api user`. Verify it in GitHub Settings > Emails; if it differs, redo the mailmap step from the backup.
+- **Why not `--refs`:** filter-repo does not rewrite commits that an excluded ref still reaches, so backup branches in the same repo defeat it. The backups live in a folder copy and a bundle, and the backup branches are re-created from the copy afterwards.
+- **Cost:** every commit hash on every branch and tag changed, so the remote must be force-pushed; collaborators or forks (there are none known) would have to re-clone. Short hashes quoted in `CHANGELOG.md` and the reports were mapped to the new ones from filter-repo's commit map.
