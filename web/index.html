@@ -6,6 +6,23 @@
     <title>spice-lite · circuit simulator in your browser</title>
     <meta name="description" content="Write a SPICE netlist, press Run, and see DC, AC and transient results. The simulator is Python running in your browser; nothing is uploaded." />
     <meta name="color-scheme" content="light dark" />
+    <!-- Link previews (Open Graph / Twitter). og:image and og:url must be absolute URLs; they assume the Pages address
+         https://hopexist.github.io/spice-lite/ and need changing if the repository is renamed or served from another domain. -->
+    <link rel="canonical" href="https://hopexist.github.io/spice-lite/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="spice-lite" />
+    <meta property="og:title" content="spice-lite: a SPICE circuit simulator that runs in your browser" />
+    <meta property="og:description" content="DC, AC and transient analysis with diodes and MOSFETs, checked against ngspice. Python in WebAssembly; nothing you type is uploaded." />
+    <meta property="og:url" content="https://hopexist.github.io/spice-lite/" />
+    <meta property="og:image" content="https://hopexist.github.io/spice-lite/social-preview.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="spice-lite logo and an RC pulse response plotted against ngspice with its error curve" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="spice-lite: a SPICE circuit simulator that runs in your browser" />
+    <meta name="twitter:description" content="DC, AC and transient analysis with diodes and MOSFETs, checked against ngspice. Nothing you type is uploaded." />
+    <meta name="twitter:image" content="https://hopexist.github.io/spice-lite/social-preview.png" />
+    <meta name="twitter:image:alt" content="spice-lite logo and an RC pulse response plotted against ngspice with its error curve" />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
@@ -31,7 +48,7 @@
         <label class="field"><span>Example</span><select id="examples"></select></label>
         <button id="run" class="btn primary" type="button"><span class="label">Run</span><kbd id="run-kbd">Ctrl&#8201;&#8629;</kbd></button>
         <button id="share" class="btn" type="button">Copy link</button>
-        <button id="theme" class="btn" type="button" aria-label="Color theme: follow system"><span id="theme-label">Auto</span></button>
+        <button id="theme" class="btn" type="button" aria-label="Theme: Auto (follows your system). Press to change."><span id="theme-label">Theme: Auto</span></button>
       </div>
     </header>
     <section class="hero" aria-labelledby="hero-h">
@@ -73,7 +90,7 @@
         <article class="cap cap-wide">
           <svg class="cap-fig" viewBox="0 0 120 48" aria-hidden="true"><path class="c-a" d="M4 44C30 44 34 6 60 6s30 38 56 38"/><path class="c-b" d="M4 44C30 44 34 6 60 6s30 38 56 38"/></svg>
           <h3>Checked against ngspice</h3>
-          <p>809 Python tests. Every bundled example has a committed ngspice 41 reference. Linear <code>.op</code> and <code>.dc</code> agree to 1e-9 relative, <code>.ac</code> to 1e-6, and each transient to a tolerance written next to its test.</p>
+          <p>824 Python tests. Every bundled example has a committed ngspice 41 reference. Linear <code>.op</code> and <code>.dc</code> agree to 1e-9 relative, <code>.ac</code> to 1e-6, and each transient to a tolerance written next to its test.</p>
         </article>
         <article class="cap">
           <svg class="cap-fig" viewBox="0 0 120 48" aria-hidden="true"><path d="M4 44L116 8M4 44L116 24M4 44L116 38"/></svg>
@@ -110,8 +127,33 @@
       <p class="section-sub">One sheet per element the netlist parser accepts. Values in SI units; anything the parser rejects is an error with its line number.</p>
       <div id="sheets" class="sheets"></div>
     </section>
+    <section class="about" id="about" aria-labelledby="about-h">
+      <h2 id="about-h" class="section-h">About this project</h2>
+      <p class="section-sub">spice-lite is a SPICE-style circuit simulator written from scratch in Python, as a learning and portfolio project by an electrical-engineering student. It is not a replacement for ngspice: the README lists what it does not model.</p>
+      <div class="about-grid">
+        <article>
+          <h3>How it is verified</h3>
+          <p>824 Python tests, 65 of which compare against ngspice 41, each with a tolerance written next to it. Where a closed form exists the answer is also checked against it (RC step response, filter corners, the exact diode solution), and convergence-order tests check that halving the step halves backward Euler's error and quarters trapezoidal's. The "ngspice reference" box on a plot overlays precomputed ngspice curves; it is not a live ngspice run.</p>
+        </article>
+        <article>
+          <h3>Nothing you type leaves your browser</h3>
+          <p>The simulator is Python compiled to WebAssembly (Pyodide), running in a Web Worker on your own machine, so your netlist is never uploaded. A share link keeps the circuit after the <code>#</code> in its address, which browsers do not send to servers. The page does download static files: its own assets, and Python, NumPy and SciPy from the jsDelivr CDN (about 24 MB on the first visit).</p>
+        </article>
+        <article>
+          <h3>Read more</h3>
+          <ul>
+            <li><a href="https://github.com/Hopexist/spice-lite">Source code on GitHub</a></li>
+            <li><a href="https://github.com/Hopexist/spice-lite/blob/main/docs/writeup.md">Write-up: building it and checking it against ngspice</a></li>
+            <li><a href="https://github.com/Hopexist/spice-lite/blob/main/docs/convergence.md">Convergence table: backward Euler vs trapezoidal</a></li>
+            <li><a href="https://github.com/Hopexist/spice-lite#limitations">What it does not model</a></li>
+          </ul>
+        </article>
+      </div>
+    </section>
     <footer class="foot">
       <span id="runtime">Python runtime not loaded yet</span>
+      <span class="sep" aria-hidden="true">·</span>
+      <a href="#about">about this project</a>
       <span class="sep" aria-hidden="true">·</span>
       <a href="https://github.com/Hopexist/spice-lite">source on GitHub</a>
       <span class="sep" aria-hidden="true">·</span>

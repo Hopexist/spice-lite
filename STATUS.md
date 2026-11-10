@@ -120,3 +120,4 @@ Suggested GitHub topics (set by hand under Settings, or the gear next to About):
 `newton-raphson`, `transient-analysis`, `mosfet`, `cmos`.
 Suggested repository description: "SPICE-style circuit simulator in Python (MNA, Newton-Raphson, DC/AC/transient), checked against ngspice, runs in the browser".
 | 2. Technical write-up | done | (see git log) | docs/writeup.md: about 1,900 words of prose; 4 [EDIT: ...] markers; scripts/newton_limiting_demo.py backs the Newton table; 824 passed, 0 skipped; ruff clean; web build ok |
+| 3. Site polish | done | (see git log) | og/twitter metadata + social-preview.png; About section; 404.html; robots.txt; theme-button label fix; stale test count fixed; 25 docs plots regenerated with the ngspice overlay. Lighthouse desktop (before the last two fixes): a11y 100, best practices 100, SEO 92; not re-run. 824 pytest, 106 vitest, 24 e2e (full run before the label fix; 4 relevant re-run after), ruff clean, build ok |

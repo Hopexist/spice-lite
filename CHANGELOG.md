@@ -22,6 +22,9 @@ although the package reports `__version__ = "0.7.0"`. The milestone numbers in c
   (`web_api.py`); precomputed ngspice reference overlay for every bundled example; GitHub Pages workflow; Vitest and Playwright tests.
   Python tests: 718 after the web API.
 - **MIT licence** (`2b60d8e`).
+- **Portfolio polish** (branch `portfolio-polish`): README front door with validation and limitations sections, `docs/convergence.md`,
+  `docs/benchmark_sparse.md`, `docs/writeup.md`, About section, social preview card, 404 page and `robots.txt` for the site, changelog,
+  contributing guide and issue templates.
 - **MOSFET capacitances** (`405807f`): overlap (`CGSO`, `CGDO`, `CGBO`) and fixed junction (`CBD`, `CBS`) capacitances, in AC and transient.
   Examples `cmos_inverter_overlap`, `nmos_cs_bandwidth`.
 - **Web UI design pass** (`37f31e4` to `6a76f82`): design system, motion, landing section with a live demo, element spec sheets generated from a
@@ -35,6 +38,10 @@ although the package reports `__version__ = "0.7.0"`. The milestone numbers in c
 - `mna.build` silently dropped MOSFETs (found in the stamping audit, `f5e3b39`; test first).
 - `.tran ... uic` failed on two capacitors in parallel with a spurious "loop of voltage sources" error (`405807f`; test first).
 - Ctrl/Cmd+Enter in the web editor ran the netlist twice (`6a76f82`).
+
+### Fixed (docs and site)
+- The 25 plots in `docs/` that the README describes as spicelite vs ngspice had been generated without ngspice and showed no overlay; regenerated.
+- The site's capability card said 809 tests; it is 824. The theme button's accessible name now contains its visible text.
 
 ### Known issues
 - Fixed-step trapezoidal rings on a capacitor current between ideal voltage sources (documented in the README limitations).
