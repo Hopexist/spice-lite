@@ -1,7 +1,7 @@
 # Report: M8 MOSFET and M9 adaptive stepping (branch `m8-mosfet-adaptive`)
 
 Started Mon Nov 9 10:20:54 EST 2026 (per `date`); the last test run finished 12:48. Nothing was pushed or tagged, and `main` is untouched.
-`main` does not contain M7 (the merge was blocked earlier), so this branch was cut from `overnight-m5-m7` (d6ec1f2): merging it brings M5-M9 together.
+`main` does not contain M7 (the merge was blocked earlier), so this branch was cut from `overnight-m5-m7` (8b6b62a): merging it brings M5-M9 together.
 The previous overnight report is kept as `REPORT_M5_M7.md`. Commits: `M8: level-1 MOSFET`, `M9: .ic/UIC and adaptive time stepping`,
 `M8-M9 audit pass` (hashes in `git log --oneline`).
 
@@ -27,7 +27,7 @@ The previous overnight report is kept as `REPORT_M5_M7.md`. Commits: `M8: level-
 - Intrinsic capacitances skipped (`shortcut:` in `elements.py`, README limitation); bulk junctions reduced to their GMIN conductance (D17).
 - Examples: `nmos_iv`, `cmos_inverter_vtc`, `cmos_inverter_tran`, `nmos_common_source`. Docs: `iv_nmos.png` (family of four Vgs with ngspice dashed),
   `transfer_cmos_inverter.png` (VTC overlay), `wave_cmos_inverter_tran.png`, `bode_nmos_common_source.png`.
-- Regression: `tests/golden_m1_m7.json` (all 26 earlier examples, frozen from commit d6ec1f2 via `git archive`) compared at 1e-9 relative: **unchanged**,
+- Regression: `tests/golden_m1_m7.json` (all 26 earlier examples, frozen from commit 8b6b62a via `git archive`) compared at 1e-9 relative: **unchanged**,
   including the diode circuits that now go through the generalised Newton loop.
 
 ### ngspice agreement (M8; tolerance is a fraction of the signal peak unless noted)

@@ -1,13 +1,13 @@
 # STATUS (overnight run, branch `overnight-m5-m7`)
 
-Cut from `main` at 805e627 (Milestone 6). Nothing pushed, nothing tagged, `main` untouched.
+Cut from `main` at ce2d9c8 (Milestone 6). Nothing pushed, nothing tagged, `main` untouched.
 
 Test command for every committing run: `NGSPICE=<bundled ngspice_con.exe> python -m pytest -q -rs`
 (0 failures AND 0 skips required).
 
 | Phase | State | Last commit | Tests (ngspice on) |
 |---|---|---|---|
-| Preflight | done | - | main @ 805e627: 309 passed, 0 skipped |
+| Preflight | done | - | main @ ce2d9c8: 309 passed, 0 skipped |
 | 1. M5 controlled sources | done | (see git log) | 425 passed, 0 skipped (368 passed, 57 skipped without ngspice) |
 | 2. M7 CLI / sparse / CI | done (CI workflow written, not run: no push allowed) | (see git log) | 497 passed, 0 skipped |
 | 3. Audit | done | (see git log) | 520 passed, 0 skipped (463 passed, 57 skipped without ngspice) |
@@ -16,7 +16,7 @@ Test command for every committing run: `NGSPICE=<bundled ngspice_con.exe> python
 (none yet)
 
 
-# M8-M9 run (branch `m8-mosfet-adaptive`, cut from `overnight-m5-m7` @ d6ec1f2 because main lacks M7)
+# M8-M9 run (branch `m8-mosfet-adaptive`, cut from `overnight-m5-m7` @ 8b6b62a because main lacks M7)
 
 Started: Mon Nov 9 10:20:54 EST 2026. Brief was pasted twice; the second copy is the complete one.
 Test command: `. NGSPICE=<bundled ngspice_con.exe> python -m pytest -q -rs` (0 failures and 0 skips required).
@@ -30,7 +30,7 @@ Baseline at start: 520 passed, 0 skipped.
 | 4. Report | done (REPORT.md; previous run kept as REPORT_M5_M7.md) | (see git log) | - |
 
 
-# Web UI run (branch `web-ui`, cut from main @ bb34049)
+# Web UI run (branch `web-ui`, cut from main @ cb67a6c)
 
 Started: Mon Nov  9 13:09:54 EST 2026. Test command: `NGSPICE=<bundled ngspice_con.exe> python -m pytest -q -rs`.
 Baseline at start: 648 passed, 0 skipped (`which ngspice` finds nothing; ngspice 41 reached through NGSPICE, same as DECISIONS D1).
@@ -99,7 +99,7 @@ Baseline size and load: JS 375.7 kB (129.4 kB gzip), CSS 13.9 kB (4.1 kB gzip), 
 cache (Pyodide + numpy + scipy from the CDN), measured by shots.mjs.
 
 
-# Portfolio polish run (branch `portfolio-polish`, cut from main @ d5337bf)
+# Portfolio polish run (branch `portfolio-polish`, cut from main @ 2d01fd6)
 
 Started: Mon Nov  9 19:26:54 EST 2026 (per `date`). Time box about 2 h; at 1 h 40 m (21:06) skip to the final report.
 Preflight: `git status` clean on main apart from an untracked `.claude-flow/` tool-state folder (ignored in this branch);
@@ -141,13 +141,31 @@ Verification after the rewrite: `git log --format=%ae --all` over the real branc
 
 Tags (same commits, new hashes; the trees are identical):
 
-| tag | before | after |
+| tag | original (before any rewrite) | now |
 |---|---|---|
-| v0.1 | adc02e1 | d97fa29 |
-| v0.2-dc | a2a0d4a | cde51af |
-| v0.3-ac | 1d8a55f | eee4200 |
-| v0.4-tran | 9692950 | a9f6890 |
-| v0.5-nonlinear | ceaf1f1 | caa3664 |
-| v0.6-nonlinear-tran | e641ad2 | 805e627 |
+| v0.1 | adc02e1 | e69761a |
+| v0.2-dc | a2a0d4a | 77f0903 |
+| v0.3-ac | 1d8a55f | 762103e |
+| v0.4-tran | 9692950 | ef60a91 |
+| v0.5-nonlinear | ceaf1f1 | b2dcb3a |
+| v0.6-nonlinear-tran | e641ad2 | ce2d9c8 |
 
-The `backup-before-rewrite/*` branches, `../spice-lite-backup` and `../spice-lite-all-refs.bundle` still contain the personal e-mail address and the resume notes. Never push them: push explicit branch names, not `--all` or `--mirror`, and delete them once you are satisfied (`git branch -D` each, then delete the folder and the bundle).
+(Those backups were deleted after the repository was recreated; see the next section.)
+
+
+# Second privacy pass and repository recreation
+
+The force-push replaced the history on GitHub, but GitHub still served the old `main` commit by its hash (checked through the API), with the
+personal e-mail address in it. The repository had also been public all along. Deleting and recreating the repository is the only way to make
+GitHub drop those objects, so the history was cleaned once more before the new push:
+
+| Item | Before | After |
+|---|---|---|
+| University named in `CLAUDE.md` (every commit since the first) | present | removed from every revision (`git filter-repo --replace-text`) |
+| Name of the desktop application that bundles ngspice (reports and decisions) | present | replaced by "another (desktop) application" in every revision |
+| Commit timezones | -0500 on all 92 author and committer dates | +0000; the instants are unchanged (epoch seconds compared before and after) |
+| Author and committer e-mail | noreply address only | unchanged |
+
+Checks against a bundle taken just before this pass: only `CLAUDE.md`, `DECISIONS.md`, `REPORT_M5_M7.md` and `REPORT_M8_M9.md` differ, on every
+branch; commit messages and timestamps are identical; none of the replaced strings remains in any revision. Commit hashes quoted in the
+documents were mapped to the new commits by matching timestamp and message.
