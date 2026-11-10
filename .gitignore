@@ -16,3 +16,4 @@ web/public/wheels/
 web/test-results/
 web/playwright-report/
 graphify-out/
+.claude-flow/
