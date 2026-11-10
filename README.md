@@ -20,6 +20,9 @@ dense or sparse linear algebra and Newton-Raphson. It was written to understand 
 every element's MNA stamp is one short function with its pattern in the docstring (`src/spicelite/elements.py`), and every result is
 compared with ngspice 41. It is a learning and portfolio project, not a replacement for ngspice (see [Limitations](#limitations)).
 
+**Write-up:** [Building a SPICE simulator from scratch and checking it against ngspice](docs/writeup.md): MNA, companion models,
+trapezoidal vs backward Euler, Newton-Raphson with voltage limiting, and what the ngspice comparison caught.
+
 At a glance (all re-checked on 2026-11-09, see [Validation](#validation) for how):
 **824 tests**, of which **65 compare against ngspice 41**; **35 example netlists**, each with a committed ngspice reference for the browser overlay;
 sparse solves are tens of times faster than dense on long RC ladders ([benchmark](docs/benchmark_sparse.md)).

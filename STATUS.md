@@ -119,3 +119,4 @@ Suggested GitHub topics (set by hand under Settings, or the gear next to About):
 `ngspice`, `electronics`, `electrical-engineering`, `analog-circuits`, `eda`, `python`, `numpy`, `scipy`, `pyodide`, `webassembly`,
 `newton-raphson`, `transient-analysis`, `mosfet`, `cmos`.
 Suggested repository description: "SPICE-style circuit simulator in Python (MNA, Newton-Raphson, DC/AC/transient), checked against ngspice, runs in the browser".
+| 2. Technical write-up | done | (see git log) | docs/writeup.md: about 1,900 words of prose; 4 [EDIT: ...] markers; scripts/newton_limiting_demo.py backs the Newton table; 824 passed, 0 skipped; ruff clean; web build ok |
