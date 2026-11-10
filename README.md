@@ -1,24 +1,167 @@
 # spice-lite
 
 [![CI](https://github.com/Hopexist/spice-lite/actions/workflows/ci.yml/badge.svg)](https://github.com/Hopexist/spice-lite/actions/workflows/ci.yml)
+[![Live demo](https://img.shields.io/badge/demo-runs%20in%20your%20browser-2f6fdd)](https://hopexist.github.io/spice-lite/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 
-A small SPICE-style circuit simulator in Python. It parses a subset of the SPICE netlist
-format and solves DC operating point, DC sweep, AC small-signal and transient analyses with
-Modified Nodal Analysis (MNA), using Newton-Raphson for diodes. Results are checked against ngspice.
+**A SPICE circuit simulator written from scratch in Python: DC, AC and transient analysis with diodes and MOSFETs, checked
+against ngspice, and runnable in your browser.**
 
-**Status:** parser, DC, AC, transient, diodes and level-1 MOSFETs with Newton-Raphson (DC, AC, transient), `.ic`/UIC,
-controlled sources with op-amps, adaptive time stepping, a command line, sparse solves and a CI workflow are done (see the
-roadmap in `CLAUDE.md`).
+**[Try it live: hopexist.github.io/spice-lite](https://hopexist.github.io/spice-lite/)** (nothing is uploaded; Python runs locally in WebAssembly)
 
-## Try it in your browser
+![spice-lite web UI: a CMOS inverter transfer curve with the ngspice overlay on](docs/hero.png)
 
-**Live demo: https://hopexist.github.io/spice-lite/** (placeholder until GitHub Pages is enabled for this repository)
+*The web UI running the bundled `cmos_inverter_vtc` example with the precomputed ngspice curves overlaid; the panel is the UI's own
+comparison against that committed ngspice reference.*
 
-Paste or edit a netlist, press Run (Ctrl/Cmd+Enter), and get interactive plots and tables. The page opens with a live demo drawn from real simulation data, and ends with a spec sheet for every element the parser accepts. spicelite runs in your browser through
-[Pyodide](https://pyodide.org) inside a Web Worker, so there is no server and nothing you type leaves the page. Every bundled
-example can overlay precomputed ngspice curves with an error panel; share links (`#n=...`) reproduce a circuit.
+spice-lite parses a subset of the SPICE netlist format, assembles the circuit with Modified Nodal Analysis (MNA), and solves it with
+dense or sparse linear algebra and Newton-Raphson. It was written to understand how a circuit simulator works from the inside:
+every element's MNA stamp is one short function with its pattern in the docstring (`src/spicelite/elements.py`), and every result is
+compared with ngspice 41. It is a learning and portfolio project, not a replacement for ngspice (see [Limitations](#limitations)).
 
-![spice-lite web UI, dark theme](docs/web_ui_dark.png)
+At a glance (all re-checked on 2026-11-09, see [Validation](#validation) for how):
+**824 tests**, of which **65 compare against ngspice 41**; **35 example netlists**, each with a committed ngspice reference for the browser overlay;
+sparse solves are tens of times faster than dense on long RC ladders ([benchmark](docs/benchmark_sparse.md)).
+
+## What it can simulate
+
+| Analysis | What you get | Method | Notes |
+|---|---|---|---|
+| `.op` | DC operating point | one MNA solve; capacitors open, inductors short; Newton-Raphson with junction limiting and a gmin-stepping fallback when the circuit has diodes or MOSFETs | |
+| `.dc` | sweep of a V or I source | an `.op` per point, each starting from the previous solution | |
+| `.ac` | magnitude and phase over `dec`/`oct`/`lin` frequencies | complex MNA (`jwC`, `jwL`), one solve per frequency, nonlinear devices linearised at the bias point | |
+| `.tran` | waveforms | companion models for C and L; trapezoidal (2nd order, default) or backward Euler (1st order); fixed step or adaptive (local-truncation-error control); `uic` / `.ic` initial conditions | LU factored once per step size |
+
+| Circuit elements | |
+|---|---|
+| Passives and sources | `R`, `C`, `L`, `V` and `I` (DC, AC, `PULSE`, `SIN`) |
+| Controlled sources | `E` (VCVS), `G` (VCCS), `F` (CCCS), `H` (CCVS); an op-amp is an `E` with gain 1e6 |
+| Semiconductors | `D` (Shockley diode with series resistance), `M` (level-1 MOSFET with overlap and fixed junction capacitances) |
+
+Bundled examples (`examples/`): RC, RL and RLC filters, a Sallen-Key low-pass, an inverting amplifier and an integrator, diode
+rectifier and clamp (DC and transient), a CMOS inverter (transfer curve and switching transient), and an NMOS common-source stage
+with its bandwidth.
+
+## Quick start
+
+```
+git clone https://github.com/Hopexist/spice-lite && cd spice-lite
+pip install -e .
+spicelite run examples/rc_lowpass.cir --plot out
+```
+
+This prints the AC table for the RC low-pass and writes `out/rc_lowpass_ac.png`. For development (tests, ruff) use `pip install -e .[dev]`
+and `pytest -q`; the comparison tests need ngspice (see [Install for development](#install-for-development)).
+
+## How it works
+
+```mermaid
+flowchart LR
+    N["netlist text"] --> P["parser.py<br/>NetlistError with line numbers"]
+    P --> C["circuit.py<br/>Circuit and element dataclasses"]
+    C --> S["elements.py + mna.py<br/>MNA stamps: A x = b"]
+    S --> DC["analysis/dc.py<br/>.op and .dc"]
+    S --> AC["analysis/ac.py<br/>.ac, complex MNA"]
+    S --> TR["analysis/tran.py + adaptive.py<br/>.tran, companion models"]
+    NR["analysis/newton.py<br/>Newton-Raphson, limiting, gmin"] --- DC
+    NR --- TR
+    NR --- AC
+    LS["sparse.py<br/>dense LAPACK or sparse SuperLU"] --- S
+    DC --> R["result objects<br/>numpy arrays + node names"]
+    AC --> R
+    TR --> R
+    R --> CLI["cli.py<br/>tables, CSV, PNG"]
+    R --> W["web_api.py<br/>JSON for the browser UI (Pyodide)"]
+```
+
+The unknowns are the node voltages (ground excluded) plus one branch current for every voltage source and inductor. Each element adds
+its **stamp** to the matrix `A` and right-hand side `b` of `A x = b`; a voltage source also adds a row that pins the voltage difference,
+which is why it needs the extra current unknown. DC solves it once. AC replaces `C` and `L` by the complex admittances `jwC` and `1/(jwL)`
+and solves once per frequency. Transient replaces each capacitor and inductor by a conductance in parallel with a current source that carries
+the previous step's state (a *companion model*); the matrix only changes when the step size does, so it is factored once. A diode or MOSFET
+is nonlinear, so Newton-Raphson linearises it around the current guess into a conductance and a current source, stamps those, solves, and
+repeats until the voltages and currents stop changing. The sections below derive each piece with worked numbers.
+
+## Validation
+
+"Validated" here means that a test which runs in `pytest -q` passes; nothing below is claimed beyond what those tests check. Three
+independent kinds of evidence:
+
+1. **Analytic solutions.** Where a closed form exists, the result is compared with it: the RC step response `V (1 - e^(-t/RC))`, the RC
+   low-pass corner at `1/(2 pi R C)` (-3.01 dB, -45 degrees), RLC resonance, the inverting amplifier's finite-gain formula, the Sallen-Key
+   transfer function, and the exact Lambert-W solution of a single diode circuit (better than 1e-11 relative).
+2. **Convergence order.** Halving the time step must cut backward Euler's error about 2x and trapezoidal's about 4x. The ratios are
+   asserted in `tests/test_tran.py` and tabulated, from the real solver, in [`docs/convergence.md`](docs/convergence.md)
+   (`python scripts/convergence_table.py` regenerates it).
+3. **ngspice 41.** `ngspice.py` writes a temporary netlist, runs `ngspice -b`, and parses the output; 65 comparison tests
+   (`tests/test_vs_ngspice.py`, `tests/test_vs_ngspice_nonlinear.py`) compare against a tolerance written next to each test with the reason for
+   it (ngspice's transient curves are interpolated onto spicelite's time grid first). Examples of the tolerances and what was observed:
+
+| Comparison | Tolerance in the test | Observed (from the test comments and the sections below) |
+|---|---|---|
+| linear `.op` / `.dc` | 1e-9 relative / 1e-9 of peak | a direct solve in both tools |
+| linear AC (RC, RL, RLC, filters) | 1e-6 relative, on the complex values | better than 1e-12 relative |
+| controlled sources, AC | | 3e-15 relative |
+| transient: RC step | 5e-5 of peak | 1.1e-5 |
+| transient: RLC ring-down | 1e-3 of peak | 2.4e-4 |
+| transient: sine into RL | 5e-4 of peak | 1.2e-4 |
+| transient: diode rectifier | 5e-3 of peak | 1.2e-3 |
+| transient, adaptive step: RLC ring | 4e-2 of peak | 4.7e-3 on a node voltage, 9.4e-3 on the loop current (error accumulates over about 20 periods) |
+| diode `.dc` against ngspice's default tolerances | | up to 2e-4 of peak (ngspice's own `reltol = 1e-3`); below 1e-9 with ngspice's tolerances tightened to ours |
+| MOSFET `.dc` (`nmos_iv`) | 1e-9 of peak | 8e-12 |
+| CMOS inverter transfer curve | 5e-8 of peak | 6.5e-10 |
+| CMOS inverter transient | 1.2e-3 of peak | 2.6e-4 |
+
+The transient tolerances are deliberately loose, and the reason is written in the test: ngspice is run with tight tolerances and a small
+step, so the gap is spicelite's own O(h^2) trapezoidal error (halving the step cuts it 4x).
+
+On top of that, `tests/test_regression.py` pins the full-precision output of the bundled examples (rtol 1e-12; the linear ones also through the
+sparse solver) so a refactor cannot silently change a result, and the `R`, `C`, `L`, `V` and `I` stamps have unit tests against hand-computed
+matrices (`tests/test_stamps.py`, `tests/test_stamps_reactive.py`; the other elements are covered by the analytic and ngspice tests). The CI
+workflow runs the suite on Python 3.10, 3.11 and 3.12 with ngspice installed and **fails if any test is skipped**, so the comparisons cannot
+quietly turn off. The browser build is tested too: every bundled example is run through real Pyodide and compared with its committed ngspice
+reference (`web/tests`), plus Playwright end-to-end tests (`web/e2e`).
+
+## Limitations
+
+spice-lite is a teaching-scale simulator. What it does not do, so you can trust the rest:
+
+**Not supported** (each raises a `NetlistError` with the line number rather than being ignored; checked by parsing a one-line example of each):
+bipolar and junction transistors (`Q`, `J`), subcircuits (`X`, `.subckt`), coupled inductors (`K`), switches (`S`), behavioural sources (`B`),
+`.param`, `.step`, `.include`, `.meas`, `.noise`, `.temp`, and MOSFET models other than level 1 (no BSIM). There is no temperature scaling, no
+noise or distortion analysis, no Monte Carlo and no parametric sweeps.
+
+**Modelled approximately:**
+
+* `PULSE` needs all seven values; the time step is fixed unless `.options step=adaptive` (in a fixed run a failing
+  Newton step is halved internally, but output stays on the fixed grid). Adaptive stepping needs a nonzero source rise
+  time (a zero-rise jump leaves the trapezoidal history stale for one step).
+* The op-amp model has a flat gain at every frequency (no gain-bandwidth limit, slew rate, saturation or
+  input/output impedance); an `F`/`H` can only sense a `V` source's current.
+* MOSFETs are level 1 only. Their capacitances are the LINEAR overlap ones (`CGSO`, `CGDO`, `CGBO`) and fixed-value
+  junction capacitances (`CBD`, `CBS`): no Meyer gate capacitance (no `TOX`, so channel charge is not modelled) and no
+  depletion law Cj(V) for the junctions (ngspice applies one when `CBD`/`CBS` are given, so only the overlap terms are
+  compared with it). The bulk-junction diodes are still just their GMIN conductance: a bulk biased more than ~0.6 V
+  above a channel terminal does not conduct as it does in ngspice.
+* Fixed-step trapezoidal rings (sample-to-sample oscillation) on a capacitor current when the capacitor sits directly
+  between ideal voltage sources and a source has a corner; the voltages are fine. Drive such nodes through a resistance
+  (as `cmos_inverter_overlap.cir` does) or use `method=be`.
+* `.ic` only sets capacitor voltages (a node with no capacitor on it is rejected) and is only used
+  with `uic`; without `uic` an `.ic` line is an error rather than being silently ignored.
+* A loop made only of voltage sources and capacitors (or inductors and current sources only) has no
+  t = 0+ capacitor current / inductor voltage; those histories then start at zero (a `shortcut:` note in `tran.py`).
+* Diode model: no breakdown, junction capacitance (`CJO`), transit time (`TT`) or temperature scaling.
+
+**Performance and scale.** Circuits with diodes or MOSFETs use the dense solver. The sparse speed-ups (benchmark at the end of this file) come from one machine and one
+circuit family (long RC ladders, the best case). In the browser the first run downloads Python, NumPy and SciPy (24.3 MB) and takes about 10-11 s.
+
+## Run it in your browser
+
+Paste or edit a netlist, press Run (Ctrl/Cmd+Enter), and get interactive plots and tables. The page opens with a live demo
+drawn from real simulation data, and ends with a spec sheet for every element the parser accepts. spicelite runs in your browser
+through [Pyodide](https://pyodide.org) inside a Web Worker, so there is no server and nothing you type leaves the page. Every
+bundled example can overlay precomputed ngspice curves with an error panel; share links (`#n=...`) reproduce a circuit.
 
 ```
 cd web
@@ -29,14 +172,15 @@ npm run build      # static site in web/dist (works from a sub-path such as /spi
 npm run e2e        # Playwright smoke tests against the built site (PW_CHANNEL=msedge to use an installed browser)
 ```
 
-The first run downloads Python, numpy and scipy (about 11 s cold); later runs are cached. Limits and design choices are in `DECISIONS.md` (D30-D36).
+The first run downloads Python, NumPy and SciPy (about 11 s cold, 24.3 MB measured in `REPORT.md`); later runs are cached.
+Limits and design choices are in `DECISIONS.md` (D30-D36).
 
-## Install and quick start
+## Install for development
 
 ```
 pip install -e .[dev]
 pytest -q
-spicelite run examples/rc_lowpass.cir --csv out --plot out     # run a netlist: tables, CSV, PNG
+spicelite run examples/rc_lowpass.cir --csv out --plot out     # tables, CSV and a PNG per analysis
 python -m spicelite.plotting      # regenerate the plots in docs/
 ```
 
@@ -96,26 +240,83 @@ the executable.
 | Transient methods | trapezoidal (default, 2nd order) and backward Euler (1st order, damped); fixed step (default) or adaptive (local-truncation-error control) |
 | Initial state | DC solution, or with `uic` the `.ic` capacitor voltages and zero inductor currents |
 
-Anything else raises a `NetlistError` with the line number. Known limitations:
+Anything else raises a `NetlistError` with the line number; see [Limitations](#limitations).
 
-* `PULSE` needs all seven values; the time step is fixed unless `.options step=adaptive` (in a fixed run a failing
-  Newton step is halved internally, but output stays on the fixed grid). Adaptive stepping needs a nonzero source rise
-  time (a zero-rise jump leaves the trapezoidal history stale for one step).
-* The op-amp model has a flat gain at every frequency (no gain-bandwidth limit, slew rate, saturation or
-  input/output impedance); an `F`/`H` can only sense a `V` source's current.
-* MOSFETs are level 1 only. Their capacitances are the LINEAR overlap ones (`CGSO`, `CGDO`, `CGBO`) and fixed-value
-  junction capacitances (`CBD`, `CBS`): no Meyer gate capacitance (no `TOX`, so channel charge is not modelled) and no
-  depletion law Cj(V) for the junctions (ngspice applies one when `CBD`/`CBS` are given, so only the overlap terms are
-  compared with it). The bulk-junction diodes are still just their GMIN conductance: a bulk biased more than ~0.6 V
-  above a channel terminal does not conduct as it does in ngspice.
-* Fixed-step trapezoidal rings (sample-to-sample oscillation) on a capacitor current when the capacitor sits directly
-  between ideal voltage sources and a source has a corner; the voltages are fine. Drive such nodes through a resistance
-  (as `cmos_inverter_overlap.cir` does) or use `method=be`.
-* `.ic` only sets capacitor voltages (a node with no capacitor on it is rejected) and is only used
-  with `uic`; without `uic` an `.ic` line is an error rather than being silently ignored.
-* A loop made only of voltage sources and capacitors (or inductors and current sources only) has no
-  t = 0+ capacitor current / inductor voltage; those histories then start at zero (a `shortcut:` note in `tran.py`).
-* Diode model: no breakdown, junction capacitance (`CJO`), transit time (`TT`) or temperature scaling.
+## Results vs ngspice (linear analyses)
+
+### AC (Bode, complex values agree with ngspice to better than 1e-12 relative)
+
+| RC lowpass | RL highpass | RLC bandpass |
+|---|---|---|
+| ![](docs/bode_rc_lowpass.png) | ![](docs/bode_rl_highpass.png) | ![](docs/bode_rlc_bandpass.png) |
+
+### Transient (trapezoidal vs ngspice with tightened tolerances, error curve underneath)
+
+| RC pulse | Underdamped RLC | Sine into RL |
+|---|---|---|
+| ![](docs/wave_rc_step.png) | ![](docs/wave_rlc_ring.png) | ![](docs/wave_sin_rl.png) |
+
+The gap to ngspice is spicelite's own O(h^2) trapezoidal error: halving the step cuts it 4x.
+
+### Trapezoidal ringing vs backward Euler damping
+
+When the step is much larger than the circuit's time constant, trapezoidal is not damped and
+rings around the true answer after a sudden input change; backward Euler stays monotonic (at the
+cost of being only first-order accurate). The overshoot is large because the input steps at t = 0
+and the step is 20 time constants.
+
+![](docs/trap_ringing.png)
+
+Convergence on an RC step response (halving h): backward Euler's error falls ~2x per halving,
+trapezoidal's ~4x, for ramped steps and, since the t = 0+ initialisation, for ideal steps as well.
+
+## Initial conditions: `.ic` and `uic`
+
+`.tran tstep tstop uic` skips the DC solve and starts from `.ic v(node)=value` capacitor voltages
+(unlisted nodes are 0) and zero inductor currents, as in SPICE.
+
+Trapezoidal integration also needs each capacitor's current and each inductor's voltage at t = 0+, not
+just the state variables. They are found by solving the circuit at t = 0+ with every capacitor held at
+its voltage (as a voltage source) and every inductor at its current (as a current source). This also
+fixes a flaw in the first transient version: with a zero-rise step at t = 0, trapezoidal averaged the
+capacitor current *before* the step (0) with the one after, which cut it to first order. It now
+converges at second order for ideal steps too (error ratio 4.00 per halving of the step).
+
+| RC discharge from `.ic v(out)=5` | RLC ring-down from `.ic v(a)=1` |
+|---|---|
+| ![](docs/wave_rc_discharge_uic.png) | ![](docs/wave_rlc_uic.png) |
+
+## Step control and initial conditions
+
+`.tran tstep tstop [uic]` is fixed-step by default (trapezoidal, LU factored once). `.options step=adaptive`
+(or `tran(circuit, adaptive=True)` / `adaptive=StepControl(rtol=..., hmin=..., hmax=..., max_steps=...)`) switches
+to **local-truncation-error control**: after every step the error is estimated from divided differences of the
+accepted points (trap: h^3 |DD3| / 2, backward Euler: h^2 |DD2|, no extra solve), a step is accepted if it is within
+`rtol` of each unknown (default 1e-4, plus 1 uV / 1 nA floors), and the next step is h (0.9 r^(-1/(p+1))) limited to
+0.5x-2x, rounded down to hmax / 2^k so factored matrices are reused. Steps land exactly on every PULSE / SIN corner (the
+history restarts at `tstep` after a corner). `tstep` is the initial and restart step, `hmax` defaults to tstop / 50,
+`hmin` to tstop x 1e-9; going below `hmin` or past `max_steps` raises a `ConvergenceError` that says where.
+`adaptive=False` forces the fixed-step path, which is unchanged (`tests/test_regression.py`).
+
+| Circuit | Fixed | Adaptive | Max error |
+|---|---|---|---|
+| `rc_step`-style RC, 5 ms, tau = 1 ms (trap) | 5001 steps (1 us) | 94 steps | 6.8e-5 (analytic) |
+| `stiff_adaptive` (tau = 1 us and 10 ms, 50 ms) | 5000 steps: error 0.17; no fixed step under 5e5 steps reaches 5e-2 | 191 steps | 5e-4 (analytic), 3.3e-4 of peak vs ngspice |
+| `rlc_ring_adaptive` (Q ~ 10, 4 ms) | ngspice: ~20000 points | 2154 steps (38 rejected) | 4.7e-3 of peak vs ngspice (accumulated over ~20 periods) |
+
+![](docs/adaptive_steps_stiff.png)
+
+![](docs/adaptive_steps.png)
+
+The cost: the matrix depends on h, so an adaptive linear run re-factors whenever h changes (few distinct sizes thanks to the
+power-of-two grid), where a fixed-step run factors once. It pays off when it saves many more steps than that, as above;
+for a circuit with one time scale the fixed-step fast path is cheaper. The global error is the per-step error accumulated over
+the run (an oscillator with Q ~ 10 over 20 periods ends ~50x above rtol), and falls roughly as rtol^(2/3).
+
+**Initial conditions.** `.ic v(node)=value` with `.tran ... uic` skips the DC operating point: capacitor voltages start at the
+given values (unspecified nodes at 0, inductor currents at 0), which also works for circuits that have no DC solution
+(`examples/rc_ic_discharge.cir`: a capacitor discharging through a resistor from 5 V, compared with the analytic exponential and
+ngspice).
 
 ## Diodes and Newton-Raphson
 
@@ -284,38 +485,6 @@ the device is its three conductances at the bias point. Both bulk junctions cont
 
 ![](docs/wave_cmos_inverter_tran.png)
 
-## Step control and initial conditions
-
-`.tran tstep tstop [uic]` is fixed-step by default (trapezoidal, LU factored once). `.options step=adaptive`
-(or `tran(circuit, adaptive=True)` / `adaptive=StepControl(rtol=..., hmin=..., hmax=..., max_steps=...)`) switches
-to **local-truncation-error control**: after every step the error is estimated from divided differences of the
-accepted points (trap: h^3 |DD3| / 2, backward Euler: h^2 |DD2|, no extra solve), a step is accepted if it is within
-`rtol` of each unknown (default 1e-4, plus 1 uV / 1 nA floors), and the next step is h (0.9 r^(-1/(p+1))) limited to
-0.5x-2x, rounded down to hmax / 2^k so factored matrices are reused. Steps land exactly on every PULSE / SIN corner (the
-history restarts at `tstep` after a corner). `tstep` is the initial and restart step, `hmax` defaults to tstop / 50,
-`hmin` to tstop x 1e-9; going below `hmin` or past `max_steps` raises a `ConvergenceError` that says where.
-`adaptive=False` forces the fixed-step path, which is unchanged (`tests/test_regression.py`).
-
-| Circuit | Fixed | Adaptive | Max error |
-|---|---|---|---|
-| `rc_step`-style RC, 5 ms, tau = 1 ms (trap) | 5001 steps (1 us) | 94 steps | 6.8e-5 (analytic) |
-| `stiff_adaptive` (tau = 1 us and 10 ms, 50 ms) | 5000 steps: error 0.17; no fixed step under 5e5 steps reaches 5e-2 | 191 steps | 5e-4 (analytic), 3.3e-4 of peak vs ngspice |
-| `rlc_ring_adaptive` (Q ~ 10, 4 ms) | ngspice: ~20000 points | 2154 steps (38 rejected) | 4.7e-3 of peak vs ngspice (accumulated over ~20 periods) |
-
-![](docs/adaptive_steps_stiff.png)
-
-![](docs/adaptive_steps.png)
-
-The cost: the matrix depends on h, so an adaptive linear run re-factors whenever h changes (few distinct sizes thanks to the
-power-of-two grid), where a fixed-step run factors once. It pays off when it saves many more steps than that, as above;
-for a circuit with one time scale the fixed-step fast path is cheaper. The global error is the per-step error accumulated over
-the run (an oscillator with Q ~ 10 over 20 periods ends ~50x above rtol), and falls roughly as rtol^(2/3).
-
-**Initial conditions.** `.ic v(node)=value` with `.tran ... uic` skips the DC operating point: capacitor voltages start at the
-given values (unspecified nodes at 0, inductor currents at 0), which also works for circuits that have no DC solution
-(`examples/rc_ic_discharge.cir`: a capacitor discharging through a resistor from 5 V, compared with the analytic exponential and
-ngspice).
-
 ## Sparse solves and benchmark
 
 An MNA matrix is mostly zeros (each element touches only its own nodes), so `spicelite.sparse` assembles it as
@@ -325,61 +494,19 @@ a tiny matrix is faster than sparse bookkeeping, and sparse from there on. Dense
 to round-off on every example (`tests/test_sparse.py`, 1e-9 relative). Circuits with diodes stay dense, because the
 Newton loop edits a dense copy of the matrix each iteration; `solver="sparse"` on such a circuit is an error.
 
-`python benchmarks/bench_sparse.py` times a long RC ladder (best of 3, 1 for the largest; assembly included;
-`.tran` is 100 trapezoidal steps, so one factorisation plus 100 back-substitutions). Measured on the
-author's Windows 11 laptop, Python 3.12, scipy 1.18:
+`python benchmarks/bench_sparse.py` times a long RC ladder (best of 3, 1 for the largest; assembly included).
+`.tran` is 100 trapezoidal steps (one factorisation plus 100 back-substitutions); the adaptive column is the step
+controller, which refactors when the step size changes. Measured on the author's Windows 11 laptop, Python 3.12.10,
+numpy 2.5.4, scipy 1.18.1 (raw output and run conditions in [`docs/benchmark_sparse.md`](docs/benchmark_sparse.md)):
 
-| sections | unknowns | .op dense | .op sparse | speed-up | .tran dense | .tran sparse | speed-up |
-|---:|---:|---:|---:|---:|---:|---:|---:|
-| 100 | 102 | 0.0480 s | 0.0013 s | 37.5x | 0.2205 s | 0.0237 s | 9.3x |
-| 1000 | 1002 | 0.8634 s | 0.0113 s | 76.7x | 2.9051 s | 0.2560 s | 11.3x |
-| 10000 | 10002 | 5.2920 s | 0.1183 s | 44.7x | 43.3431 s | 3.2395 s | 13.4x |
+| sections | unknowns | .op dense | .op sparse | speed-up | .tran dense | .tran sparse | speed-up | adaptive dense | adaptive sparse | speed-up |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 10 | 12 | 0.0004 s | 0.0007 s | 0.6x | 0.0044 s | 0.0041 s | 1.1x | 0.0090 s | 0.0096 s | 0.9x |
+| 100 | 102 | 0.0469 s | 0.0014 s | 34.7x | 0.0930 s | 0.0234 s | 4.0x | 0.1092 s | 0.0337 s | 3.2x |
+| 1000 | 1002 | 0.5952 s | 0.0137 s | 43.5x | 2.3608 s | 0.2818 s | 8.4x | 2.6496 s | 0.2899 s | 9.1x |
+| 10000 | 10002 | 4.5598 s | 0.1211 s | 37.7x | 39.3796 s | 2.5776 s | 15.3x | 68.5861 s | 3.6383 s | 18.9x |
 
-Below about 60 unknowns dense wins or ties (12 unknowns: 0.2 ms dense vs 0.5 ms sparse for `.op`), which is why
-`auto` keeps tiny circuits dense. The ladder is the best case for sparse (a tridiagonal matrix); a circuit
-where every node connects to every other would see little benefit. Timings are noisy at the small end: the
-100-section dense `.op` ranges from 0.01 to 0.05 s between runs, depending on when the BLAS thread pool wakes up.
-
-## Initial conditions: `.ic` and `uic`
-
-`.tran tstep tstop uic` skips the DC solve and starts from `.ic v(node)=value` capacitor voltages
-(unlisted nodes are 0) and zero inductor currents, as in SPICE.
-
-Trapezoidal integration also needs each capacitor's current and each inductor's voltage at t = 0+, not
-just the state variables. They are found by solving the circuit at t = 0+ with every capacitor held at
-its voltage (as a voltage source) and every inductor at its current (as a current source). This also
-fixes a flaw in the first transient version: with a zero-rise step at t = 0, trapezoidal averaged the
-capacitor current *before* the step (0) with the one after, which cut it to first order. It now
-converges at second order for ideal steps too (error ratio 4.00 per halving of the step).
-
-| RC discharge from `.ic v(out)=5` | RLC ring-down from `.ic v(a)=1` |
-|---|---|
-| ![](docs/wave_rc_discharge_uic.png) | ![](docs/wave_rlc_uic.png) |
-
-## Results vs ngspice (linear analyses)
-
-### AC (Bode, complex values agree with ngspice to better than 1e-12 relative)
-
-| RC lowpass | RL highpass | RLC bandpass |
-|---|---|---|
-| ![](docs/bode_rc_lowpass.png) | ![](docs/bode_rl_highpass.png) | ![](docs/bode_rlc_bandpass.png) |
-
-### Transient (trapezoidal vs ngspice with tightened tolerances, error curve underneath)
-
-| RC pulse | Underdamped RLC | Sine into RL |
-|---|---|---|
-| ![](docs/wave_rc_step.png) | ![](docs/wave_rlc_ring.png) | ![](docs/wave_sin_rl.png) |
-
-The gap to ngspice is spicelite's own O(h^2) trapezoidal error: halving the step cuts it 4x.
-
-### Trapezoidal ringing vs backward Euler damping
-
-When the step is much larger than the circuit's time constant, trapezoidal is not damped and
-rings around the true answer after a sudden input change; backward Euler stays monotonic (at the
-cost of being only first-order accurate). The overshoot is large because the input steps at t = 0
-and the step is 20 time constants.
-
-![](docs/trap_ringing.png)
-
-Convergence on an RC step response (halving h): backward Euler's error falls ~2x per halving,
-trapezoidal's ~4x, for ramped steps and, since the t = 0+ initialisation, for ideal steps as well.
+Below about 60 unknowns dense wins or ties (12 unknowns: 0.4 ms dense vs 0.7 ms sparse for `.op`), which is why `auto` keeps
+tiny circuits dense. The ladder is the best case for sparse (a tridiagonal matrix); a circuit where every node connects to
+every other would see little benefit. Wall-clock timings on a laptop are noisy: an earlier run of the same script measured
+76.7x for the 1000-section `.op`, this one 43.5x, so read the speed-ups as "tens of times", not as exact figures.
